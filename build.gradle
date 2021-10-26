@@ -1,0 +1,42 @@
+import java.nio.file.Files
+
+plugins {
+    id 'java'
+    id 'application'
+}
+
+group 'net.ritzow'
+version '1.0-SNAPSHOT'
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    implementation 'org.eclipse.jetty:jetty-server:11.0.7'
+    implementation 'org.eclipse.jetty:jetty-servlet:11.0.7'
+    implementation 'org.slf4j:slf4j-simple:2.0.0-alpha5'
+    implementation 'org.eclipse.jetty.http2:http2-server:11.0.7'
+    implementation 'org.eclipse.jetty:jetty-alpn-server:11.0.7'
+    implementation 'org.eclipse.jetty:jetty-alpn-java-server:11.0.7'
+    testImplementation 'org.junit.jupiter:junit-jupiter-api:5.7.0'
+    testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.7.0'
+}
+
+run {
+    mainClass = 'net.ritzow.jettywebsite.RunServer'
+    mainModule = 'net.ritzow.jettywebsite'
+
+    def properties = new Properties()
+
+    try(def file = Files.newBufferedReader(projectDir.toPath().resolve('keystore.properties'))) {
+        properties.load(file)
+    }
+
+    jvmArgs '-Dnet.ritzow.certs=' + properties.getProperty('keystore.file'),
+            '-Dnet.ritzow.pass=' + properties.getProperty('keystore.password')
+}
+
+test {
+    useJUnitPlatform()
+}
