@@ -9,6 +9,7 @@ import java.security.NoSuchAlgorithmException;
 import java.security.cert.CertificateException;
 import java.util.Set;
 import org.eclipse.jetty.alpn.server.ALPNServerConnectionFactory;
+import org.eclipse.jetty.http.CookieCompliance;
 import org.eclipse.jetty.http.HttpCompliance;
 import org.eclipse.jetty.http.HttpCookie.SameSite;
 import org.eclipse.jetty.http.UriCompliance;
@@ -78,6 +79,8 @@ public class JettySetup {
 		httpConfig.setSecurePort(443);
 		httpConfig.setHttpCompliance(HttpCompliance.RFC7230);
 		httpConfig.setUriCompliance(UriCompliance.RFC3986_UNAMBIGUOUS);
+		httpConfig.setRequestCookieCompliance(CookieCompliance.RFC6265);
+		httpConfig.setResponseCookieCompliance(CookieCompliance.RFC6265);
 		var secureCustomizer = new SecureRequestCustomizer();
 		secureCustomizer.setStsMaxAge(3600);
 		secureCustomizer.setStsIncludeSubDomains(true);
