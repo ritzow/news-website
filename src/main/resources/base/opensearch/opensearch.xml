@@ -1,8 +1,0 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<OpenSearchDescription xmlns="http://a9.com/-/spec/opensearch/1.1/">
-    <ShortName>Ritzow Net</ShortName>
-    <Description>Search ritzow.net</Description>
-    <Image type="image/svg+xml">https://ritzow.net/favicon.ico</Image>
-    <Url type="text/html" template="https://ritzow.net/search?q={searchTerms}"/>
-    <Url type="application/opensearchdescription+xml" rel="self" template="https://ritzow.net/opensearch" />
-</OpenSearchDescription>
