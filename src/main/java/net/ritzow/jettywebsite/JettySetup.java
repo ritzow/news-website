@@ -37,12 +37,15 @@ public class JettySetup {
 		Server server = new Server(pool);
 		setupConnectors(server, keyStore, keyStorePassword);
 		ErrorHandler onError = new ErrorHandler();
-		if(!DEBUG) {
+		if(DEBUG) {
+			onError.setShowStacks(true);
+		} else {
 			onError.setShowStacks(false);
 			onError.setShowMessageInTitle(false);
 			onError.setShowServlet(false);
 		}
 		server.setErrorHandler(onError);
+		/* TODO use directly instead of adding beans? */
 		server.addBean(new DefaultSessionCacheFactory());
 		server.addBean(new NullSessionDataStoreFactory());
 		SecuredRedirectHandler secureHandler = new SecuredRedirectHandler();
@@ -90,6 +93,9 @@ public class JettySetup {
 		httpConfig.addCustomizer(secureCustomizer);
 		var http1 = new HttpConnectionFactory(httpConfig);
 		var http11Insecure = new ServerConnector(server, http1);
+		if(DEBUG) {
+			http11Insecure.setHost("::1");
+		}
 		http11Insecure.setPort(80);
 		var http2Config = new HttpConfiguration(httpConfig);
 		var http2 = new HTTP2ServerConnectionFactory(http2Config);
@@ -102,6 +108,9 @@ public class JettySetup {
 		sslFactory.setKeyStorePassword(keyStorePassword);
 		var ssl = new SslConnectionFactory(sslFactory, alpn.getProtocol());
 		var httpSecure = new ServerConnector(server, ssl, alpn, http2, http1);
+		if(DEBUG) {
+			httpSecure.setHost("::1");
+		}
 		httpSecure.setPort(443);
 		server.setConnectors(new Connector[] { http11Insecure, httpSecure });
 	}
