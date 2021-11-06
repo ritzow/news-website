@@ -1,5 +1,5 @@
 body {
-	background:#e6ffff;
+	background-color: GhostWhite;
 	margin: 0px;
 }
 
@@ -10,7 +10,7 @@ body {
 #content {
 	max-width: 500px;
 	padding: 10px;
-	background:#33adff;
+	background-color: GhostWhite;
 	font-family:sans-serif;
 }
 
@@ -28,6 +28,7 @@ body {
 	background-color: #cccccc;
 	font-family:sans-serif;
 	font-size: medium;
+	resize: vertical
 }
 
 .form-element:focus {
@@ -53,9 +54,10 @@ img {
 @media all and (min-width: 518px) {
 	#content {
 		border-radius:25px;
-		margin-top: 8px;
-		margin-bottom: 8px;
+		margin-top: 16px;
+		margin-bottom: 16px;
 		margin-left: auto;
 		margin-right: auto;
+		filter: drop-shadow(0 0 8px rgba(0, 0, 0, 0.5));
 	}
 }
