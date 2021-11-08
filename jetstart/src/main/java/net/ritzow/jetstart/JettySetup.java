@@ -1,4 +1,4 @@
-package net.ritzow.jettywebsite;
+package net.ritzow.jetstart;
 
 import jakarta.servlet.SessionTrackingMode;
 import java.io.IOException;

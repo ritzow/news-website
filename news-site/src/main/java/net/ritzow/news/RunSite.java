@@ -1,16 +1,19 @@
-package net.ritzow.jettywebsite;
+package net.ritzow.news;
 
 import j2html.tags.DomContent;
 import j2html.tags.specialized.HtmlTag;
 import java.nio.file.Path;
 import java.util.Map;
+import net.ritzow.jetstart.HtmlGeneratorHandler;
+import net.ritzow.jetstart.JettyHandlers;
+import net.ritzow.jetstart.JettySetup;
+import net.ritzow.jetstart.StaticPathHandler;
 import org.eclipse.jetty.server.Handler;
 import org.eclipse.jetty.util.resource.Resource;
 
 import static j2html.TagCreator.*;
 
-public class RunServer {
-	
+public class RunSite {
 	public static void main(String[] args) throws Exception {
 		
 		var base = Resource.newClassPathResource("base");
@@ -18,9 +21,9 @@ public class RunServer {
 		var index = base.getResource("index.html");
 		var favicon = base.getResource("icon.svg");
 		var style = base.getResource("style.css");
-
+		
 		Handler handler = StaticPathHandler.newPath(
-			new HtmlGeneratorHandler(index()), //JettyHandlers.newResource(index, Type.TEXT_HTML.asString()),
+			new HtmlGeneratorHandler(index()),
 			Map.entry("opensearch", JettyHandlers.newResource(osxml, "application/opensearchdescription+xml")),
 			Map.entry("style.css", JettyHandlers.newResource(style, "text/css"))
 		);

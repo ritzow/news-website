@@ -1,4 +1,4 @@
-package net.ritzow.jettywebsite;
+package net.ritzow.jetstart;
 
 import j2html.TagCreator;
 import j2html.tags.specialized.HtmlTag;

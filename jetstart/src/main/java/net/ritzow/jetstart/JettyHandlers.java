@@ -1,4 +1,4 @@
-package net.ritzow.jettywebsite;
+package net.ritzow.jetstart;
 
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -17,21 +17,13 @@ public class JettyHandlers {
 		ResourceService resources = new ResourceService();
 		resources.setEtags(true);
 		resources.setDirAllowed(false);
-		resources.setContentFactory((path, maxBuffer) -> {
-			//if(path.equals("/")) {
-				return new ResourceHttpContent(resource, contentType, maxBuffer);
-			//} else {
-			//	throw new InvalidPathException(path, "Invalid PathInContext");
-			//}
-		});
+		resources.setContentFactory((path, maxBuffer) -> new ResourceHttpContent(resource, contentType, maxBuffer));
 		return new AbstractHandler() {
 			@Override
 			public void handle(String target, Request baseRequest, HttpServletRequest
 					request, HttpServletResponse response) throws IOException, ServletException {
 				if(HttpMethod.GET.is(request.getMethod()) || HttpMethod.HEAD.is(request.getMethod())) {
-					/* MessageDigest class can be used to get hash to use for better ETAG */
 					resources.doGet(request, response);
-					baseRequest.setHandled(true);
 				}
 			}
 		};

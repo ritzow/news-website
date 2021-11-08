@@ -1,7 +1,9 @@
-module net.ritzow.jettywebsite {
-	requires org.eclipse.jetty.server;
+module net.ritzow.jetstart {
+	requires transitive org.eclipse.jetty.server;
 	requires org.eclipse.jetty.http2.server;
 	requires org.eclipse.jetty.alpn.server;
 	requires org.eclipse.jetty.servlet;
 	requires com.j2html;
+	
+	exports net.ritzow.jetstart;
 }
