@@ -12,12 +12,14 @@ import org.eclipse.jetty.alpn.server.ALPNServerConnectionFactory;
 import org.eclipse.jetty.http.CookieCompliance;
 import org.eclipse.jetty.http.HttpCompliance;
 import org.eclipse.jetty.http.HttpCookie.SameSite;
+import org.eclipse.jetty.http.HttpStatus;
 import org.eclipse.jetty.http.UriCompliance;
 import org.eclipse.jetty.http2.server.HTTP2ServerConnectionFactory;
 import org.eclipse.jetty.server.*;
 import org.eclipse.jetty.server.handler.ErrorHandler;
 import org.eclipse.jetty.server.handler.RequestLogHandler;
 import org.eclipse.jetty.server.handler.SecuredRedirectHandler;
+import org.eclipse.jetty.server.handler.gzip.GzipHandler;
 import org.eclipse.jetty.server.session.DefaultSessionCacheFactory;
 import org.eclipse.jetty.server.session.DefaultSessionIdManager;
 import org.eclipse.jetty.server.session.NullSessionDataStoreFactory;
@@ -48,12 +50,18 @@ public class JettySetup {
 		/* TODO use directly instead of adding beans? */
 		server.addBean(new DefaultSessionCacheFactory());
 		server.addBean(new NullSessionDataStoreFactory());
+		GzipHandler gzipHandler = new GzipHandler();
+		gzipHandler.setHandler(setupSessionInfrastructure(server, handler));
 		SecuredRedirectHandler secureHandler = new SecuredRedirectHandler();
-		secureHandler.setHandler(setupSessionInfrastructure(server, handler));
+		secureHandler.setHandler(gzipHandler);
 		RequestLogHandler logHandler = new RequestLogHandler();
 		logHandler.setHandler(secureHandler);
 		Logger log = LoggerFactory.getLogger(JettySetup.class);
-		logHandler.setRequestLog((request, response) -> log.info(request + " Response " + response.getStatus()));
+		logHandler.setRequestLog((request, response) -> log.info(
+			request
+			+ " from " + request.getRemoteInetSocketAddress().getAddress().getHostAddress()
+			+ " Response \"" + HttpStatus.getCode(response.getStatus()).getMessage()
+			+ "\" (" + response.getStatus() + ")"));
 		server.setHandler(logHandler);
 		return server;
 	}
