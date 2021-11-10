@@ -16,16 +16,15 @@ import static j2html.TagCreator.*;
 public class RunSite {
 	public static void main(String[] args) throws Exception {
 		
-		var base = Resource.newClassPathResource("base");
-		var osxml = base.getResource("opensearch.xml");
-		var index = base.getResource("index.html");
-		var favicon = base.getResource("icon.svg");
-		var style = base.getResource("style.css");
+		Resource osxml = Resource.newResource(resource("/xml/opensearch.xml"));
+		Resource favicon = Resource.newResource(resource("/image/icon.svg"));
+		Resource style = Resource.newResource(resource("/css/global.css"));
 		
 		Handler handler = StaticPathHandler.newPath(
 			new HtmlGeneratorHandler(index()),
 			Map.entry("opensearch", JettyHandlers.newResource(osxml, "application/opensearchdescription+xml")),
-			Map.entry("style.css", JettyHandlers.newResource(style, "text/css"))
+			Map.entry("style.css", JettyHandlers.newResource(style, "text/css")),
+			Map.entry("favicon.ico", JettyHandlers.newResource(favicon, "image/svg+xml"))
 		);
 		
 		JettySetup.newStandardServer(
