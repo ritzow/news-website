@@ -1,9 +1,17 @@
 package net.ritzow.news;
 
+import j2html.rendering.HtmlBuilder;
 import j2html.tags.DomContent;
+import j2html.tags.specialized.FormTag;
 import j2html.tags.specialized.HtmlTag;
+import java.io.IOException;
+import java.net.URL;
 import java.nio.file.Path;
-import java.util.Map;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
+import java.time.format.FormatStyle;
+import java.util.*;
+import java.util.function.Supplier;
 import net.ritzow.jetstart.HtmlGeneratorHandler;
 import net.ritzow.jetstart.JettyHandlers;
 import net.ritzow.jetstart.JettySetup;
@@ -15,6 +23,7 @@ import static j2html.TagCreator.*;
 
 public class RunSite {
 	public static void main(String[] args) throws Exception {
+		System.out.println("Starting server...");
 		
 		Resource osxml = Resource.newResource(resource("/xml/opensearch.xml"));
 		Resource favicon = Resource.newResource(resource("/image/icon.svg"));
@@ -27,55 +36,108 @@ public class RunSite {
 			Map.entry("favicon.ico", JettyHandlers.newResource(favicon, "image/svg+xml"))
 		);
 		
-		JettySetup.newStandardServer(
+		var server = JettySetup.newStandardServer(
 			Path.of(System.getProperty("net.ritzow.certs")),
 			System.getProperty("net.ritzow.pass"),
 			handler
-		).start();
+		);
+		
+		server.start();
+		
+		/* Shutdown on user input */
+		try(var in = new Scanner(System.in)) {
+			while(!in.nextLine().equals("stop"));
+		}
+		
+		System.out.println("Stopping server...");
+		
+		server.stop();
+		server.join();
+	}
+	
+	private static URL resource(String path) {
+		return RunSite.class.getResource(path);
+	}
+
+	private static final class DynamicTextContent extends DomContent {
+		private final Supplier<String> sup;
+		
+		DynamicTextContent(Supplier<String> sup) {
+			this.sup = sup;
+		}
+		
+		@Override
+		public <T extends Appendable> T render(HtmlBuilder<T> builder, Object model) throws IOException {
+			builder.appendEscapedText(sup.get());
+			return builder.output();
+		}
 	}
 	
 	private static HtmlTag index() {
 		return pageTemplate(
-			div(
-				h1("Welcome to R Net!").withId("title"),
-				//img().withId("site-icon").withSrc("/favicon.ico"),
-				a("Map").withHref("/map"),
-				p().withId("time"),
-				p().withId("connection"),
-				form(
-					p("Username:"),
+			div().withClass("content").with(
+				h1("Welcome to R Net!").withClass("title"),
+				p(new DynamicTextContent(() -> generateGibberish(100 + new Random().nextInt(500), 8)))
+			),
+			div().withClass("separator"),
+			footer().withClass("footer").with(
+				span(text("Server Time: "), new DynamicTextContent(() -> ZonedDateTime.now().format(
+					DateTimeFormatter.ofLocalizedDateTime(FormatStyle.LONG).withLocale(Locale.ROOT))))
+			)
+		);
+	}
+	
+	private static final String VALID_CHARS = "abcdefghijklmnopqrstuvwxyz";
+	
+	private static String generateGibberish(int words, int maxWordSize) {
+		SplittableRandom random = new SplittableRandom();
+		StringBuilder builder = new StringBuilder(words * maxWordSize/2);
+		for(int i = 0; i < words; i++) {
+			char[] word = new char[random.nextInt(maxWordSize + 1) + 1];
+			for(int j = 0; j < word.length; j++) {
+				word[j] = VALID_CHARS.charAt(random.nextInt(VALID_CHARS.length()));
+			}
+			if(random.nextBoolean()) {
+				word[0] = Character.toUpperCase(word[0]);
+			}
+			builder.append(word).append(' ');
+		}
+		return builder.toString();
+	}
+	
+	private static FormTag mainForm() {
+		return form().withName("main")
+			.withAction("/form/main")
+			.withMethod("POST")
+			.withEnctype("multipart/form-data").with(
+				p("Username:"),
+				input()
+					.withCondRequired(true)
+					.withClass("form-element")
+					.withType("text")
+					.withName("username")
+					.withPlaceholder("Username"),
+				p("Password:"),
+				input()
+					.withCondRequired(true)
+					.withClass("form-element")
+					.withType("password")
+					.withName("password")
+					.withPlaceholder("Password"),
+				p("File upload: ").with(
 					input()
-						.withCondRequired(true)
-						.withClass("form-element")
-						.withType("text")
-						.withName("username")
-						.withPlaceholder("Username"),
-					p("Password:"),
-					input()
-						.withCondRequired(true)
-						.withClass("form-element")
-						.withType("password")
-						.withName("password")
-						.withPlaceholder("Password"),
-					p("File upload: ").with(
-						input()
-							.withType("file")
-							.withName("upload")
-					),
-					p("Echo:"),
-					textarea()
-						.withClass("form-element")
-						.withName("comment")
-						.withPlaceholder("Type some text here."),
-					p(input().withType("submit")),
-					a(
-						button("This is a link button")
-					).withHref("blah")
-				).withName("main")
-					.withAction("/form/main")
-					.withMethod("POST")
-					.withEnctype("multipart/form-data")
-			).withId("content")
+						.withType("file")
+						.withName("upload")
+				),
+				p("Echo:"),
+				textarea()
+					.withClass("form-element")
+					.withName("comment")
+					.withPlaceholder("Type some text here."),
+				p(input().withType("submit")),
+				a(
+					button("This is a link button")
+				).withHref("blah")
 		);
 	}
 	
@@ -98,7 +160,7 @@ public class RunSite {
 					.withContent("width=device-width,initial-scale=1"),
 				meta().withCharset("UTF-8")
 			),
-			body(body)
+			body(body).withClass("page")
 		);
 	}
 }

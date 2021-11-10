@@ -1,0 +1,97 @@
+/* https://stackoverflow.com/questions/90178/make-a-div-fill-the-height-of-the-remaining-screen-space */
+
+/* entire webpage */
+
+html {
+	/* html element must be sized https://stackoverflow.com/a/7049918/2442171 */
+	height: 100%;
+}
+
+.page {
+	display: flex;
+	flex-flow: column;
+	height: 100%;
+	background-color: rgb(248, 248, 255);
+	/* Remove default padding around content */
+	margin: 0;
+}
+
+/* Main box with words */
+
+.page > .content {
+	flex: 0 1 auto;
+	max-width: 500px;
+	padding: 10px;
+	background-color: rgb(255, 255, 255);
+	font-family: sans-serif;
+}
+
+@media all and (min-width: 518px) {
+	.page > .content {
+		border-radius:25px;
+		margin-top: 16px;
+		margin-bottom: 16px;
+		margin-left: auto;
+		margin-right: auto;
+		filter: drop-shadow(0 0 8px rgba(0, 0, 0, 0.5));
+	}
+}
+
+/* Separates footer from main box */
+
+.page > .separator {
+	flex: 1 1 auto;
+}
+
+/* Always at the bottom of the screen or after main box */
+
+.page > .footer {
+	flex: 0 1 auto;
+	/* TODO margin doesn't work if page overflows */
+	/* margin-left: auto;
+	margin-top: auto; */
+	text-align: right;
+	margin-right: 10px;
+	margin-bottom: 10px;
+}
+
+/* #site-icon {
+	width: 50%;
+} */
+
+.title {
+	text-align: center;
+}
+
+.form-element {
+	width: 100%;
+	padding: 10px;
+	box-sizing: border-box;
+	border: none;
+	box-shadow: none;
+	outline-style: none;
+	background-color: #cccccc;
+	font-family:sans-serif;
+	font-size: medium;
+	resize: vertical
+}
+
+.form-element:focus {
+	background-color: #b3b3b3;
+}
+
+.form-element:valid {
+	border-bottom: 2px solid black;
+}
+
+.form-element:invalid {
+	border-bottom: 2px solid red;
+}
+
+/* .img {
+	max-width: 100%;
+	width: auto;
+	display: block;
+	margin-left: auto;
+	margin-right: auto;
+} */
