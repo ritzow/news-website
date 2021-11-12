@@ -2,9 +2,11 @@
 
 /* entire webpage */
 
-html {
+:root {
 	/* html element must be sized https://stackoverflow.com/a/7049918/2442171 */
 	height: 100%;
+	
+	scrollbar-color: rgb(73, 73, 73) rgb(219, 219, 219);
 }
 
 .page {
@@ -51,8 +53,15 @@ html {
 	/* margin-left: auto;
 	margin-top: auto; */
 	text-align: right;
-	margin-right: 10px;
-	margin-bottom: 10px;
+	padding-right: 10px;
+	padding-bottom: 10px;
+	font-family: sans-serif;
+	animation: blink 1s infinite;
+}
+
+@keyframes blink {
+	from { display: none; }
+	to { display: initial; }
 }
 
 /* #site-icon {
@@ -73,7 +82,7 @@ html {
 	background-color: #cccccc;
 	font-family:sans-serif;
 	font-size: medium;
-	resize: vertical
+	resize: vertical;
 }
 
 .form-element:focus {
@@ -87,6 +96,12 @@ html {
 .form-element:invalid {
 	border-bottom: 2px solid red;
 }
+
+.markdown {
+	all: initial;
+	/* Properties for markdown text */
+}
+
 
 /* .img {
 	max-width: 100%;
