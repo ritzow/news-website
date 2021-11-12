@@ -23,19 +23,29 @@ import static j2html.TagCreator.*;
 
 public class RunSite {
 	public static void main(String[] args) throws Exception {
-		System.out.println("Starting server...");
-		
 		Resource osxml = Resource.newResource(resource("/xml/opensearch.xml"));
 		Resource favicon = Resource.newResource(resource("/image/icon.svg"));
 		Resource style = Resource.newResource(resource("/css/global.css"));
 		
 		Handler handler = StaticPathHandler.newPath(
-			new HtmlGeneratorHandler(index()),
+			HtmlGeneratorHandler.newPage(
+				PageTemplate.fullPage("R Net",
+					div().withClass("content").with(
+						h1("Welcome to R Net!").withClass("title"),
+						p(PageTemplate.generatedText(RunSite::generateSomeGibberish)),
+						div().withClass("markdown").with(new UnescapedText(convertSomeMarkdownToHtml()))
+					),
+					div().withClass("separator"),
+					footer().withClass("footer").with(
+						span(text("Server Time: "), new DynamicTextContent(() -> ZonedDateTime.now().format(
+							DateTimeFormatter.ofLocalizedDateTime(FormatStyle.LONG).withLocale(Locale.ROOT))))
+					)
+				)
+			),
 			Map.entry("opensearch", JettyHandlers.newResource(osxml, "application/opensearchdescription+xml")),
 			Map.entry("style.css", JettyHandlers.newResource(style, "text/css")),
 			Map.entry("favicon.ico", JettyHandlers.newResource(favicon, "image/svg+xml"))
 		);
-		
 		var server = JettySetup.newStandardServer(
 			Path.of(System.getProperty("net.ritzow.certs")),
 			System.getProperty("net.ritzow.pass"),
@@ -46,7 +56,7 @@ public class RunSite {
 		
 		/* Shutdown on user input */
 		try(var in = new Scanner(System.in)) {
-			while(!in.nextLine().equals("stop"));
+			while(!in.next().equals("stop"));
 		}
 		
 		System.out.println("Stopping server...");
@@ -58,36 +68,16 @@ public class RunSite {
 	private static URL resource(String path) {
 		return RunSite.class.getResource(path);
 	}
-
-	private static final class DynamicTextContent extends DomContent {
-		private final Supplier<String> sup;
-		
-		DynamicTextContent(Supplier<String> sup) {
-			this.sup = sup;
-		}
-		
-		@Override
-		public <T extends Appendable> T render(HtmlBuilder<T> builder, Object model) throws IOException {
-			builder.appendEscapedText(sup.get());
-			return builder.output();
-		}
-	}
 	
-	private static HtmlTag index() {
-		return pageTemplate(
-			div().withClass("content").with(
-				h1("Welcome to R Net!").withClass("title"),
-				p(new DynamicTextContent(() -> generateGibberish(100 + new Random().nextInt(500), 8)))
-			),
-			div().withClass("separator"),
-			footer().withClass("footer").with(
-				span(text("Server Time: "), new DynamicTextContent(() -> ZonedDateTime.now().format(
-					DateTimeFormatter.ofLocalizedDateTime(FormatStyle.LONG).withLocale(Locale.ROOT))))
-			)
-		);
+	private static String convertSomeMarkdownToHtml()  {
+		return HtmlRenderer.builder().build().render(Parser.builder().build().parse(markdown));
 	}
 	
 	private static final String VALID_CHARS = "abcdefghijklmnopqrstuvwxyz";
+	
+	private static String generateSomeGibberish() {
+		return generateGibberish(100 + new Random().nextInt(500), 8);
+	}
 	
 	private static String generateGibberish(int words, int maxWordSize) {
 		SplittableRandom random = new SplittableRandom();
