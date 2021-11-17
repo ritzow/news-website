@@ -1,6 +1,5 @@
 package net.ritzow.jetstart;
 
-import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
@@ -15,7 +14,7 @@ public abstract class DynamicContentHandler extends AbstractHandler {
 	public final void handle(String target, Request baseRequest, HttpServletRequest request,
 			HttpServletResponse response) throws IOException {
 		//TODO check if already on client to make use of etag
-		ContentInfo result = generateContent(response.getWriter());
+		ContentInfo result = generateContent(baseRequest, response.getWriter());
 		response.setContentType(result.contentType());
 		response.setStatus(HttpStatus.OK_200);
 		response.setHeader(HttpHeader.ETAG.asString(), result.etag());
@@ -24,5 +23,5 @@ public abstract class DynamicContentHandler extends AbstractHandler {
 	}
 	
 	public static record ContentInfo(String contentType, String etag) {}
-	protected abstract ContentInfo generateContent(Writer body) throws IOException;
+	protected abstract ContentInfo generateContent(Request request, Writer body) throws IOException;
 }
