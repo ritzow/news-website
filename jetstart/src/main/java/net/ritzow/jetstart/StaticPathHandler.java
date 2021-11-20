@@ -6,6 +6,8 @@ import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Objects;
+import java.util.Optional;
 import org.eclipse.jetty.server.Handler;
 import org.eclipse.jetty.server.Request;
 import org.eclipse.jetty.server.handler.AbstractHandler;
@@ -18,44 +20,51 @@ public class StaticPathHandler extends AbstractHandler {
 	private static final String PATH_ATTRIBUTE_NAME =
 		StaticPathHandler.class.getModule().getName() + ".path";
 	
-	@SafeVarargs
-	public static Handler newPath(Handler handler, Entry<String, Handler>... paths) {
-		return new StaticPathHandler(handler, paths);
+	public static String subPath(Request request) {
+		return request.getHttpURI().getDecodedPath().substring(currentIndex(request));
 	}
 	
-	private StaticPathHandler(Handler handler, Entry<String, Handler>[] paths) {
+	public static Optional<String> nextComponent(Request request) {
+		String path = request.getHttpURI().getDecodedPath();
+		int index = currentIndex(request);
+		int endIndex = end(path, index);
+		return endIndex - index > 1 ? Optional.of(path.substring(index + 1, endIndex)) : Optional.empty();
+	}
+	
+	StaticPathHandler(Handler handler, Entry<String, Handler>[] paths) {
 		this.subpaths = Map.ofEntries(paths);
 		this.leafHandler = handler;
+	}
+	
+	private static int currentIndex(Request request) {
+		return Objects.requireNonNullElse(
+			(Integer)request.getAttributes().getAttribute(PATH_ATTRIBUTE_NAME), 0);
+	}
+	
+	private static int end(String path, int index) {
+		int endIndex = path.indexOf('/', index + 1);
+		if(endIndex == -1) {
+			return path.length();
+		}
+		return endIndex;
 	}
 	
 	@Override
 	public void handle(String target, Request baseRequest, HttpServletRequest request,
 			HttpServletResponse response) throws IOException, ServletException {
-		String path = (String)baseRequest.getAttribute(PATH_ATTRIBUTE_NAME);
-		if(path == null) {
-			baseRequest.setAttribute(PATH_ATTRIBUTE_NAME, path = target);
-		}
 		
 		/* start index of component, inclusive */
-		int startIndex;
-		if(path.charAt(0) == '/') {
-			startIndex = 1;
-		} else {
-			startIndex = 0;
-		}
+		int index = currentIndex(baseRequest);
 		
+		String path = baseRequest.getHttpURI().getDecodedPath();
+	
 		/* end index of component, exclusive */
-		int endIndex = path.indexOf('/', startIndex);
-		if(endIndex == -1) {
-			endIndex = path.length();
-		}
-		
-		/* remove the leading component */
-		baseRequest.setAttribute(PATH_ATTRIBUTE_NAME, path.substring(endIndex));
+		int endIndex = end(path, index);
 		
 		Handler handler;
-		if(startIndex < endIndex) {
-			handler = subpaths.get(path.substring(startIndex, endIndex));
+		if(endIndex - index > 1) {
+			baseRequest.getAttributes().setAttribute(PATH_ATTRIBUTE_NAME, endIndex);
+			handler = subpaths.get(path.substring(index, endIndex));
 		} else {
 			handler = leafHandler;
 		}
