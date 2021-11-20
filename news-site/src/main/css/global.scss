@@ -8,6 +8,8 @@
 
 	--radius: 25px;
 	--pad: 10px;
+
+	--logo-hover: drop-shadow(0 0 8px rgba(255, 0, 0, 0.5));
 	
 	/* html element must be sized https://stackoverflow.com/a/7049918/2442171 */
 	height: 100%;
@@ -51,11 +53,37 @@
 .header {
 	border-bottom-left-radius: var(--radius);
 	border-bottom-right-radius: var(--radius);
-	padding: var(--pad);
+	position: relative;
 	width: min-content;
-	margin-top: 0;
-	margin-left: auto;
+	margin-left: 5%;
 	margin-right: auto;
+}
+
+.logo {
+	display: inline-block;
+	white-space: nowrap;
+	text-decoration: none;
+	user-select: none;
+	font-size: 200%;
+	transition: filter 500ms;
+}
+
+.logo:hover {
+	filter: var(--logo-hover);
+	transition: filter 500ms;
+}
+
+.logo-img {
+	vertical-align: middle;
+}
+
+.logo-text {
+	margin-left: var(--pad);
+	vertical-align: middle;
+	font-family: sans-serif;
+	font-style: italic;
+	font-weight: bold;
+	color: black;
 }
 
 /* All page content that is not the footer */
@@ -76,10 +104,13 @@
 }
 
 .footer {
-	text-align: right;
+	//text-align: right;
 	padding-right: 10px;
 	padding-bottom: 10px;
 	font-family: sans-serif;
+	margin-left: auto;
+	margin-right: 0;
+	border-top-left-radius: var(--radius);
 }
 
 .title {

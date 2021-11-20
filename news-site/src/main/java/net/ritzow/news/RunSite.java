@@ -42,6 +42,8 @@ public class RunSite {
 	
 	private static ContentManager cm;
 	
+	private static final String WEBSITE_LOGO = "/favicon.ico";
+	
 	public static void main(String[] args) throws Exception {
 		var db = Database.openTestDb();
 		cm = ContentManager.of(db);
@@ -83,19 +85,19 @@ public class RunSite {
 		div()/*.withLang("es")*/.withClass("page-body").with(
 			freeze(
 				div().withClasses("header", "foreground").with(
-					span("RedNet!")
+					//span("RedNet!")
+					logo(WEBSITE_LOGO)
 				)
 			),
 			div().withClasses("main-box", "foreground").with(
 				freeze(
-					h1("Welcome to RedNet!").withClass("title"),
-					p("Blah blah blah blah.")
+					h1("Welcome to RedNet!").withClass("title")
 				),
 				dynamic(state -> state.named("content"))
 			)
 		),
 		div().withClass("page-separator"),
-		footer().withClasses("page-footer", "footer").with(
+		footer().withClasses("page-footer", "footer", "foreground").with(
 			span(text("Server Time: "), dynamic(state -> new UnescapedText(ZonedDateTime.now().format(
 				DateTimeFormatter.ofLocalizedDateTime(FormatStyle.LONG).withLocale(Locale.ROOT)))))
 		)

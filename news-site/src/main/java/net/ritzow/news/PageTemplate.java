@@ -38,6 +38,13 @@ public class PageTemplate {
 			new UnescapedText(state.translator().forPrioritized(name, HttpUser.localesForUser(state.request()))));
 	}
 	
+	public static DomContent logo(String logoPath) {
+		return a().withClass("logo").withHref("/").with(
+			img().withClass("logo-img").withWidth("50px").withHeight("50px").withAlt("RedNet Logo Red Circle").withSrc(logoPath),
+			span("RedNet!").withClass("logo-text")
+		);
+	}
+	
 	public static HtmlTag fullPage(String title, DomContent... body) {
 		return html(
 			baseHead(title),
@@ -61,7 +68,8 @@ public class PageTemplate {
 			meta().withName("robots").withContent("noindex"),
 			meta().withName("viewport")
 				.withContent("width=device-width,initial-scale=1"),
-			meta().withCharset("UTF-8")
+			meta().withCharset("UTF-8"),
+			meta().withName("referrer").withContent("no-referrer")
 		));
 	}
 	
