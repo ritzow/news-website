@@ -1,55 +1,68 @@
 package net.ritzow.news;
 
+import j2html.Config;
+import j2html.rendering.FlatHtml;
 import j2html.rendering.HtmlBuilder;
 import j2html.tags.DomContent;
-import j2html.tags.specialized.FormTag;
+import j2html.tags.UnescapedText;
 import j2html.tags.specialized.HtmlTag;
-import java.io.IOException;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import java.io.*;
 import java.net.URL;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.security.DigestOutputStream;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.sql.SQLException;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.FormatStyle;
 import java.util.*;
-import java.util.function.Supplier;
-import net.ritzow.jetstart.HtmlGeneratorHandler;
-import net.ritzow.jetstart.JettyHandlers;
-import net.ritzow.jetstart.JettySetup;
-import net.ritzow.jetstart.StaticPathHandler;
+import java.util.function.Function;
+import net.ritzow.jetstart.*;
+import net.ritzow.news.ContentManager.Article;
+import org.commonmark.parser.Parser;
+import org.commonmark.renderer.html.HtmlRenderer;
+import org.eclipse.jetty.http.HttpHeader;
+import org.eclipse.jetty.http.HttpStatus;
 import org.eclipse.jetty.server.Handler;
-import org.eclipse.jetty.util.resource.Resource;
+import org.eclipse.jetty.server.Request;
+import org.eclipse.jetty.server.handler.AbstractHandler;
 
 import static j2html.TagCreator.*;
+import static java.util.Map.entry;
+import static net.ritzow.jetstart.JettyHandlers.newPath;
+import static net.ritzow.jetstart.JettyHandlers.newResource;
+import static net.ritzow.news.PageTemplate.*;
 
 public class RunSite {
+	
+	private static ContentManager cm;
+	
 	public static void main(String[] args) throws Exception {
-		Resource osxml = Resource.newResource(resource("/xml/opensearch.xml"));
-		Resource favicon = Resource.newResource(resource("/image/icon.svg"));
-		Resource style = Resource.newResource(resource("/css/global.css"));
+		var db = Database.openTestDb();
+		cm = ContentManager.of(db);
+		cm.initNew();
+		cm.newArticle("sandbox2d", Locale.forLanguageTag("en-US"), "Sandbox2D Readme", TempContent.markdown);
+		cm.newArticle("blahblah", Locale.forLanguageTag("es"), "Sandbox2D Readme Spanish", "***HELLO!!!***");
 		
-		Handler handler = StaticPathHandler.newPath(
-			HtmlGeneratorHandler.newPage(
-				PageTemplate.fullPage("R Net",
-					div().withClass("content").with(
-						h1("Welcome to R Net!").withClass("title"),
-						p(PageTemplate.generatedText(RunSite::generateSomeGibberish)),
-						div().withClass("markdown").with(new UnescapedText(convertSomeMarkdownToHtml()))
-					),
-					div().withClass("separator"),
-					footer().withClass("footer").with(
-						span(text("Server Time: "), new DynamicTextContent(() -> ZonedDateTime.now().format(
-							DateTimeFormatter.ofLocalizedDateTime(FormatStyle.LONG).withLocale(Locale.ROOT))))
-					)
-				)
-			),
-			Map.entry("opensearch", JettyHandlers.newResource(osxml, "application/opensearchdescription+xml")),
-			Map.entry("style.css", JettyHandlers.newResource(style, "text/css")),
-			Map.entry("favicon.ico", JettyHandlers.newResource(favicon, "image/svg+xml"))
-		);
+		/* TODO use integrity attribute to verify content if delivered via CDN */
+		/* TODO and use crossorigin="anonymous" */
 		var server = JettySetup.newStandardServer(
-			Path.of(System.getProperty("net.ritzow.certs")),
-			System.getProperty("net.ritzow.pass"),
-			handler
+			Path.of(System.getProperty("net.ritzow.certs")), System.getProperty("net.ritzow.pass"),
+			newPath(
+				genericPage(PAGE_OUTLINE, Map.of(
+					"content", p("PLACEHOLDER!!!")
+				)),
+				entry("/opensearch", newResource(resource("/xml/opensearch.xml"), "application/opensearchdescription+xml")),
+				entry("/style.css", newResource(resource("/css/global.css"), "text/css")),
+				entry("/favicon.ico", newResource(resource("/image/icon.svg"), "image/svg+xml")),
+				entry("/article", articlePages(TRANSLATIONS, cm))
+			),
+			genericPage(PAGE_OUTLINE, Map.of("content", p("Sorry! There was an error!")))
 		);
 		
 		server.start();
@@ -62,15 +75,143 @@ public class RunSite {
 		System.out.println("Stopping server...");
 		
 		server.stop();
+		db.prepareStatement("SHUTDOWN").execute();
 		server.join();
+	}
+	
+	private static final HtmlTag PAGE_OUTLINE = fullPage("RedNet",
+		div()/*.withLang("es")*/.withClass("page-body").with(
+			freeze(
+				div().withClasses("header", "foreground").with(
+					span("RedNet!")
+				)
+			),
+			div().withClasses("main-box", "foreground").with(
+				freeze(
+					h1("Welcome to RedNet!").withClass("title"),
+					p("Blah blah blah blah.")
+				),
+				dynamic(state -> state.named("content"))
+			)
+		),
+		div().withClass("page-separator"),
+		footer().withClasses("page-footer", "footer").with(
+			span(text("Server Time: "), dynamic(state -> new UnescapedText(ZonedDateTime.now().format(
+				DateTimeFormatter.ofLocalizedDateTime(FormatStyle.LONG).withLocale(Locale.ROOT)))))
+		)
+	);
+	
+	private static final Translator<String> TRANSLATIONS =
+		Translator.ofProperties(properties("/lang/welcome.properties"));
+	
+	/** Returns SHA-512 of response content **/
+	public static byte[] doGet(Request request, Translator<String> translations,
+		Function<Request, HtmlResult> onRequest) throws IOException {
+		MessageDigest hasher;
+		try {
+			//TODO use this for the other resources, not the html
+			hasher = MessageDigest.getInstance("SHA-512");
+		} catch(NoSuchAlgorithmException e) {
+			throw new RuntimeException(e);
+		}
+		Writer body = new OutputStreamWriter(
+			new DigestOutputStream(
+				request.getResponse().getOutputStream(), hasher
+			), StandardCharsets.UTF_8
+		);
+		body.append(document().render()).append('\n');
+		HtmlResult result = onRequest.apply(request);
+		result.html().render(FlatHtml.into(body, Config.global()), new HtmlSessionState(request, translations, result.named()));
+		body.flush();
+		request.getResponse().setContentType("text/html");
+		//TODO allow other status codes
+		request.getResponse().setStatus(HttpStatus.OK_200);
+		request.getResponse().getHttpFields().add(HttpHeader.CACHE_CONTROL, "no-store");
+		//request.getResponse().getHttpFields().add(HttpHeader.ETAG, ContentUtils.generateTimeEtag());
+		/* TODO generate etag value from content written to body outputstream */
+		request.setHandled(true);
+		return hasher.digest();
+	}
+	
+	private static Handler articlePages(Translator<String> translator, ContentManager cm) {
+		return new AbstractHandler() {
+			@Override
+			public void handle(String target, Request baseRequest, HttpServletRequest
+					request, HttpServletResponse response) throws IOException {
+				byte[] out = doGet(baseRequest, translator, RunSite::blah);
+				System.out.println(baseRequest.getHttpURI() + " sha512-" + Base64.getEncoder().withoutPadding().encodeToString(out));
+			}
+		};
+	}
+	
+	private static HtmlResult blah(Request request) {
+		Optional<String> name = StaticPathHandler.nextComponent(request);
+		if(name.isPresent()) {
+			try {
+				/* TODO if has session, see if language is overriden first */
+				String urlname = name.get();
+				List<Locale> supported = cm.getArticleLocales(urlname);
+				DomContent content;
+				if(supported.isEmpty()) {
+					content = p("No such article " + urlname);
+				} else {
+					Locale lang = HttpUser.bestLocale(request, supported);
+					Optional<Article> article = cm.getLatestArticle(urlname, lang);
+					if(article.isPresent()) {
+						content = div().withLang(lang.toLanguageTag()).with(
+							h1(article.get().title()).withClass("title-article"),
+							div().withClass("markdown").with(
+								new DomContent() {
+									@Override
+									public <T extends Appendable> T render(HtmlBuilder<T> builder, Object model) {
+										convertMarkdownToHtml(article.get().markdown(), builder.output());
+										return builder.output();
+									}
+								}
+							)
+						);
+					} else {
+						content = p("No such article " + urlname);
+					}
+				}
+				return new HtmlResult(PAGE_OUTLINE, Map.of("content", content));
+			} catch(SQLException | IOException e) {
+				//e.printStackTrace();
+				//content = p("An internal error occurred, sorry for the inconvenience.");
+				throw new RuntimeException(e);
+			}
+		} else {
+			throw new RuntimeException("Invalid path");
+		}
+	}
+	
+	private static Handler genericPage(HtmlTag page, Map<String, DomContent> map) {
+		var result = new HtmlResult(page, map);
+		return new AbstractHandler() {
+			@Override
+			public void handle(String target, Request baseRequest, HttpServletRequest request,
+					HttpServletResponse response) throws IOException, ServletException {
+				doGet(baseRequest, TRANSLATIONS, req -> result);
+			}
+		};
 	}
 	
 	private static URL resource(String path) {
 		return RunSite.class.getResource(path);
 	}
 	
-	private static String convertSomeMarkdownToHtml()  {
-		return HtmlRenderer.builder().build().render(Parser.builder().build().parse(markdown));
+	private static Properties properties(String path) {
+		try(var in = new InputStreamReader(RunSite.class.getResourceAsStream(path), StandardCharsets.UTF_8)) {
+			var p = new Properties();
+			p.load(in);
+			return p;
+		} catch(IOException e) {
+			throw new UncheckedIOException(e);
+		}
+	}
+	
+	private static void convertMarkdownToHtml(String markdown, Appendable output)  {
+		HtmlRenderer.builder().escapeHtml(true).build().render(Parser.builder().build().parse(markdown), output);
 	}
 	
 	private static final String VALID_CHARS = "abcdefghijklmnopqrstuvwxyz";
@@ -93,64 +234,5 @@ public class RunSite {
 			builder.append(word).append(' ');
 		}
 		return builder.toString();
-	}
-	
-	private static FormTag mainForm() {
-		return form().withName("main")
-			.withAction("/form/main")
-			.withMethod("POST")
-			.withEnctype("multipart/form-data").with(
-				p("Username:"),
-				input()
-					.withCondRequired(true)
-					.withClass("form-element")
-					.withType("text")
-					.withName("username")
-					.withPlaceholder("Username"),
-				p("Password:"),
-				input()
-					.withCondRequired(true)
-					.withClass("form-element")
-					.withType("password")
-					.withName("password")
-					.withPlaceholder("Password"),
-				p("File upload: ").with(
-					input()
-						.withType("file")
-						.withName("upload")
-				),
-				p("Echo:"),
-				textarea()
-					.withClass("form-element")
-					.withName("comment")
-					.withPlaceholder("Type some text here."),
-				p(input().withType("submit")),
-				a(
-					button("This is a link button")
-				).withHref("blah")
-		);
-	}
-	
-	private static HtmlTag pageTemplate(DomContent... body) {
-		return html(
-			head(
-				title("R Net"),
-				link()
-					.withRel("shortcut icon")
-					.withHref("/favicon.ico")
-					.withType("image/svg+xml"),
-				link()
-					.withRel("search")
-					.withHref("/opensearch")
-					.withType("application/opensearchdescription+xml")
-					.withTitle("Ritzow Net"),
-				link().withRel("stylesheet").withHref("/style.css"),
-				meta().withName("robots").withContent("noindex"),
-				meta().withName("viewport")
-					.withContent("width=device-width,initial-scale=1"),
-				meta().withCharset("UTF-8")
-			),
-			body(body).withClass("page")
-		);
 	}
 }

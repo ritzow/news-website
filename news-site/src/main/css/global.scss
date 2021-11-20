@@ -3,73 +3,92 @@
 /* entire webpage */
 
 :root {
+	--bg: rgb(248, 248, 255);
+	--fg: rgb(255, 255, 255);
+
+	--radius: 25px;
+	--pad: 10px;
+	
 	/* html element must be sized https://stackoverflow.com/a/7049918/2442171 */
 	height: 100%;
 	
-	scrollbar-color: rgb(73, 73, 73) rgb(219, 219, 219);
+	scrollbar-color: rgb(73, 73, 73) var(--bg);
+
+	/* Remove default margin around content */
+	margin: 0;
 }
 
 .page {
 	display: flex;
 	flex-flow: column;
 	height: 100%;
-	background-color: rgb(248, 248, 255);
-	/* Remove default padding around content */
 	margin: 0;
+	background-color: var(--bg);
 }
 
-/* Main box with words */
+/* Keep the footer at the bottom of the page */
 
-.page > .content {
+.page > .page-body {
 	flex: 0 1 auto;
-	max-width: 500px;
-	padding: 10px;
-	background-color: rgb(255, 255, 255);
-	font-family: sans-serif;
 }
 
-@media all and (min-width: 518px) {
-	.page > .content {
-		border-radius:25px;
-		margin-top: 16px;
-		margin-bottom: 16px;
-		margin-left: auto;
-		margin-right: auto;
-		filter: drop-shadow(0 0 8px rgba(0, 0, 0, 0.5));
-	}
-}
-
-/* Separates footer from main box */
-
-.page > .separator {
+.page > .page-separator {
 	flex: 1 1 auto;
 }
 
-/* Always at the bottom of the screen or after main box */
-
-.page > .footer {
+.page > .page-footer {
 	flex: 0 1 auto;
-	/* TODO margin doesn't work if page overflows */
-	/* margin-left: auto;
-	margin-top: auto; */
+}
+
+/* Foreground elements like the main content and header */
+.foreground {
+	background-color: var(--fg);
+	padding: var(--pad);
+	font-family: sans-serif;
+	filter: drop-shadow(0 0 8px rgba(0, 0, 0, 0.5));
+}
+
+.header {
+	border-bottom-left-radius: var(--radius);
+	border-bottom-right-radius: var(--radius);
+	padding: var(--pad);
+	width: min-content;
+	margin-top: 0;
+	margin-left: auto;
+	margin-right: auto;
+}
+
+/* All page content that is not the footer */
+
+.main-box {
+	margin-left: auto;
+	margin-right: auto;
+	max-width: 500px;
+}
+
+/* TODO fix this stuff to work better again */
+@media all and (min-width: 518px) {
+	.main-box {
+		border-radius: var(--radius);
+		margin-top: 16px * 2;
+		margin-bottom: 16px;
+	}
+}
+
+.footer {
 	text-align: right;
 	padding-right: 10px;
 	padding-bottom: 10px;
 	font-family: sans-serif;
-	animation: blink 1s infinite;
 }
-
-@keyframes blink {
-	from { display: none; }
-	to { display: initial; }
-}
-
-/* #site-icon {
-	width: 50%;
-} */
 
 .title {
 	text-align: center;
+}
+
+.title-article {
+	text-align: center;
+	text-decoration: underline;
 }
 
 .form-element {
@@ -102,6 +121,17 @@
 	/* Properties for markdown text */
 }
 
+.markdown * {
+	font-family: sans-serif;
+}
+
+.markdown code {
+	font-family: monospace;
+}
+
+.markdown strong {
+	font-weight: bold;
+}
 
 /* .img {
 	max-width: 100%;

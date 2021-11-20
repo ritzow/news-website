@@ -7,10 +7,12 @@ import org.eclipse.jetty.server.Request;
 public class HtmlSessionState {
 	private final Request request;
 	private final Map<String, DomContent> tags;
+	private final Translator<String> translator;
 	
-	HtmlSessionState(Request request, Map<String, DomContent> namedContent) {
+	public HtmlSessionState(Request request, Translator<String> translations, Map<String, DomContent> namedContent) {
 		this.request = request;
 		this.tags = namedContent;
+		this.translator = translations;
 	}
 	
 	public DomContent named(String tag) {
@@ -23,5 +25,9 @@ public class HtmlSessionState {
 	
 	public Request request() {
 		return request;
+	}
+	
+	public Translator<String> translator() {
+		return translator;
 	}
 }

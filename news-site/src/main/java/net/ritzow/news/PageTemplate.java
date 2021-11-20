@@ -1,14 +1,12 @@
 package net.ritzow.news;
 
 import j2html.rendering.FlatHtml;
-import j2html.rendering.HtmlBuilder;
 import j2html.tags.DomContent;
 import j2html.tags.UnescapedText;
-import j2html.tags.specialized.HeadTag;
+import j2html.tags.specialized.FormTag;
 import j2html.tags.specialized.HtmlTag;
 import java.io.IOException;
 import java.io.UncheckedIOException;
-import java.util.function.Supplier;
 import net.ritzow.jetstart.RequestHandlerContent;
 import net.ritzow.jetstart.RequestHandlerContent.RequestHandler;
 
@@ -33,6 +31,11 @@ public class PageTemplate {
 	
 	public static DomContent dynamic(RequestHandler handler) {
 		return new RequestHandlerContent(handler);
+	}
+	
+	public static DomContent translated(String name) {
+		return new RequestHandlerContent(state ->
+			new UnescapedText(state.translator().forPrioritized(name, HttpUser.localesForUser(state.request()))));
 	}
 	
 	public static HtmlTag fullPage(String title, DomContent... body) {
@@ -62,7 +65,39 @@ public class PageTemplate {
 		));
 	}
 	
-	public static DomContent generatedText(Supplier<String> text) {
-		return new DynamicTextContent(text);
+	private static FormTag mainForm() {
+		return form().withName("main").withAction("/form/main")
+			.withMethod("POST").withEnctype("multipart/form-data").with(
+			p("Username:"),
+			input()
+				.withCondRequired(true)
+				.withClass("form-element")
+				.withType("text")
+				.withName("username")
+				.withPlaceholder("Username"),
+			p("Password:"),
+			input()
+				.withCondRequired(true)
+				.withClass("form-element")
+				.withType("password")
+				.withName("password")
+				.withPlaceholder("Password"),
+			p().with(
+				label("File upload: ").withFor("upload-field"),
+				input()
+					.withType("file")
+					.withId("upload-field")
+				//.withName("upload")
+			),
+			p("Echo:"),
+			textarea()
+				.withClass("form-element")
+				.withName("comment")
+				.withPlaceholder("Type some text here."),
+			p(input().withType("submit")),
+			a(
+				button("This is a link button")
+			).withHref("blah")
+		);
 	}
 }

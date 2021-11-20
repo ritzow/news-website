@@ -1,6 +1,9 @@
 package net.ritzow.jetstart;
 
+import jakarta.servlet.ServletException;
 import jakarta.servlet.SessionTrackingMode;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.security.KeyStore;
@@ -32,13 +35,20 @@ import org.slf4j.LoggerFactory;
 public class JettySetup {
 	private static final boolean DEBUG = true;
 	
-	public static Server newStandardServer(Path keyStore, String keyStorePassword, Handler handler) throws CertificateException,
+	public static Server newStandardServer(Path keyStore, String keyStorePassword, Handler handler, Handler errorHandler) throws CertificateException,
 			IOException, KeyStoreException, NoSuchAlgorithmException {
 		QueuedThreadPool pool = new QueuedThreadPool(Runtime.getRuntime().availableProcessors());
 		pool.setName("pool");
 		Server server = new Server(pool);
 		setupConnectors(server, keyStore, keyStorePassword);
-		ErrorHandler onError = new ErrorHandler();
+		ErrorHandler onError = new ErrorHandler() {
+			@Override
+			public void handle(String target, Request baseRequest,
+				HttpServletRequest request, HttpServletResponse response) throws IOException, ServletException {
+				errorHandler.handle(target, baseRequest, request, response);
+				baseRequest.setHandled(true);
+			}
+		};
 		if(DEBUG) {
 			onError.setShowStacks(true);
 		} else {
@@ -58,9 +68,10 @@ public class JettySetup {
 		logHandler.setHandler(secureHandler);
 		Logger log = LoggerFactory.getLogger(JettySetup.class);
 		logHandler.setRequestLog((request, response) -> log.info(
-			request
-			+ " from " + request.getRemoteInetSocketAddress().getAddress().getHostAddress()
-			+ " Response \"" + HttpStatus.getCode(response.getStatus()).getMessage()
+			request.getRemoteInetSocketAddress().getAddress().getHostAddress()
+			+ " " + request.getMethod()
+			+ " " + request.getHttpURI().asString()
+			+ " \"" + HttpStatus.getCode(response.getStatus()).getMessage()
 			+ "\" (" + response.getStatus() + ")"));
 		server.setHandler(logHandler);
 		return server;
