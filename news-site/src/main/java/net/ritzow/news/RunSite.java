@@ -45,9 +45,7 @@ public class RunSite {
 	private static final String WEBSITE_LOGO = "/favicon.ico";
 	
 	public static void main(String[] args) throws Exception {
-		var db = Database.openTestDb();
-		cm = ContentManager.of(db);
-		cm.initNew();
+		cm = ContentManager.ofMemoryDatabase();
 		cm.newArticle("sandbox2d", Locale.forLanguageTag("en-US"), "Sandbox2D Readme", TempContent.markdown);
 		cm.newArticle("blahblah", Locale.forLanguageTag("es"), "Sandbox2D Readme Spanish", "***HELLO!!!***");
 		
@@ -61,7 +59,7 @@ public class RunSite {
 				)),
 				entry("/opensearch", newResource(resource("/xml/opensearch.xml"), "application/opensearchdescription+xml")),
 				entry("/style.css", newResource(resource("/css/global.css"), "text/css")),
-				entry("/favicon.ico", newResource(resource("/image/icon.svg"), "image/svg+xml")),
+				entry(WEBSITE_LOGO, newResource(resource("/image/icon.svg"), "image/svg+xml")),
 				entry("/article", articlePages(TRANSLATIONS, cm))
 			),
 			genericPage(PAGE_OUTLINE, Map.of("content", p("Sorry! There was an error!")))
@@ -77,7 +75,7 @@ public class RunSite {
 		System.out.println("Stopping server...");
 		
 		server.stop();
-		db.prepareStatement("SHUTDOWN").execute();
+		cm.shutdown();
 		server.join();
 	}
 	

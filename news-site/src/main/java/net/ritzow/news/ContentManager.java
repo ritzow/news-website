@@ -4,43 +4,55 @@ import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.sql.*;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Locale;
+import java.util.*;
 import java.util.Map.Entry;
-import java.util.Optional;
 
 import static java.util.Map.entry;
 
 public final class ContentManager {
-	
-	/** Manages tables articles, articles_content, locales **/
-	public static ContentManager of(Connection db) {
-		return new ContentManager(db);
-	}
-	
 	private final Connection db;
 	
-	private ContentManager(Connection db) {
+	public static ContentManager ofMemoryDatabase() throws SQLException {
+		return new ContentManager(DriverManager.getConnection("jdbc:hsqldb:mem:test", properties(
+			entry("user", "SA")
+		)));
+	}
+	
+	private ContentManager(Connection db) throws SQLException {
 		this.db = db;
+		initNew();
+	}
+	
+	public void shutdown() throws SQLException {
+		db.prepareStatement("SHUTDOWN").execute();
+	}
+	
+	@SafeVarargs
+	private static Properties properties(Entry<String, String>... properties) {
+		var props = new Properties(properties.length);
+		props.putAll(Map.ofEntries(properties));
+		return props;
 	}
 	
 	public void initNew() throws SQLException {
-		db.prepareStatement("CREATE TYPE URLNAME AS VARCHAR(64)").execute();
-		db.prepareStatement("CREATE TYPE LOCALENAME AS VARCHAR(35)").execute();
-		db.prepareStatement("""
+		runMultiple(
+			"CREATE TYPE URLNAME AS VARCHAR(64)",
+			"CREATE TYPE LOCALENAME AS VARCHAR(35)",
+			"""
 			CREATE TABLE locales (
 				id SMALLINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
 				code LOCALENAME NOT NULL UNIQUE
-			)""").execute();
-		db.prepareStatement("""
+			)
+			""",
+			"""
 			CREATE TABLE articles (
 				id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
 				urlname URLNAME NOT NULL UNIQUE,
 				locale_original SMALLINT NOT NULL,
 				FOREIGN KEY (locale_original) REFERENCES locales(id)
-			)""").execute();
-		db.prepareStatement("""
+			)
+			""",
+			"""
 			CREATE TABLE articles_content (
 				id INTEGER NOT NULL,
 				locale SMALLINT NOT NULL,
@@ -50,14 +62,14 @@ public final class ContentManager {
 				FOREIGN KEY (id) REFERENCES articles(id),
 				FOREIGN KEY (locale) REFERENCES locales(id),
 				UNIQUE (id, locale, revision)
-			)""").execute();
-		PreparedStatement st = db.prepareStatement("INSERT INTO locales (code) VALUES (?)");
-		for(Locale locale : Languages.recognizedLocales()) {
-			st.setString(1, locale.toLanguageTag());
-			st.addBatch();
-		}
-		st.executeBatch();
-		db.prepareStatement("""
+			)
+			"""
+		);
+		
+		uploadLocales();
+		
+		runMultiple(
+			"""
 			CREATE PROCEDURE new_article(IN urlname URLNAME, IN locale_original LOCALENAME,
 				IN title BLOB, IN markdown BLOB)
 			MODIFIES SQL DATA
@@ -68,8 +80,8 @@ public final class ContentManager {
 				INSERT INTO articles_content (id, locale, title, markdown, revision)
 					VALUES (IDENTITY(), locale_id, title, markdown, 0);
 			END
-			""").execute();
-		db.prepareStatement("""
+			""",
+			"""
 			CREATE FUNCTION get_latest_article(IN in_urlname URLNAME, IN in_locale LOCALENAME)
 				RETURNS TABLE (title BLOB, markdown BLOB)
 				READS SQL DATA
@@ -86,8 +98,8 @@ public final class ContentManager {
 				RETURN TABLE (SELECT title, markdown FROM intermediate
 					WHERE revision = (SELECT MAX(revision) FROM intermediate));
 			END
-			""").execute();
-		db.prepareStatement("""
+			""",
+			"""
             CREATE FUNCTION get_article_langs(IN in_urlname URLNAME)
                 RETURNS TABLE (locale LOCALENAME)
                 READS SQL DATA
@@ -97,43 +109,72 @@ public final class ContentManager {
                     INNER JOIN locales ON articles_content.locale = locales.id
                     WHERE articles.urlname = in_urlname);
             END
-            """).execute();
+            """
+		);
+	}
+	
+	private void runMultiple(String... sql) throws SQLException {
+		try(Statement st = db.createStatement()) {
+			for(String query : sql) {
+				st.addBatch(query);
+			}
+			st.executeBatch();
+		}
+	}
+	
+	private void uploadLocales() throws SQLException {
+		try(var st = db.prepareStatement("INSERT INTO locales (code) VALUES (?)")) {
+			for(Locale locale : List.of(
+				Locale.forLanguageTag("en-US"),
+				Locale.forLanguageTag("es"),
+				Locale.forLanguageTag("ru"),
+				Locale.forLanguageTag("zh")
+			)) {
+				st.setString(1, locale.toLanguageTag());
+				st.addBatch();
+			}
+			st.executeBatch();
+		}
 	}
 	
 	public List<Entry<Short, String>> getSupportedLocales() throws SQLException {
-		var list = new ArrayList<Entry<Short, String>>();
-		ResultSet result = db.prepareStatement("SELECT id, code FROM locales").executeQuery();
-		while(result.next()) {
-			list.add(entry(result.getShort("id"), result.getString("code")));
+		try(var st = db.prepareStatement("SELECT id, code FROM locales")) {
+			ResultSet result = st.executeQuery();
+			var list = new ArrayList<Entry<Short, String>>(4);
+			while(result.next()) {
+				list.add(entry(result.getShort("id"), result.getString("code")));
+			}
+			return list;
 		}
-		return list;
 	}
 	
 	public List<Locale> getArticleLocales(String urlname) throws SQLException {
-		var st = db.prepareStatement("call get_article_langs(?)");
-		st.setString(1, urlname);
-		ResultSet result = st.executeQuery();
-		List<Locale> locales = new ArrayList<>(4);
-		while(result.next()) {
-			locales.add(Locale.forLanguageTag(result.getString(1)));
+		try(var st = db.prepareCall("call get_article_langs(?)")) {
+			st.setString(1, urlname);
+			ResultSet result = st.executeQuery();
+			List<Locale> locales = new ArrayList<>(4);
+			while(result.next()) {
+				locales.add(Locale.forLanguageTag(result.getString(1)));
+			}
+			return locales;
 		}
-		return locales;
 	}
 	
 	public void newArticle(String urlName, Locale locale, String title, String markdown) throws SQLException {
-		var st = db.prepareStatement("call new_article(?, ?, ?, ?)");
-		st.setString(1, urlName);
-		st.setString(2, locale.toLanguageTag());
-		st.setBlob(3, new ByteArrayInputStream(title.getBytes(StandardCharsets.UTF_8)));
-		st.setBinaryStream(4, new ByteArrayInputStream(markdown.getBytes(StandardCharsets.UTF_8)));
-		st.execute();
+		try(var st = db.prepareCall("call new_article(?, ?, ?, ?)")) {
+			st.setString(1, urlName);
+			st.setString(2, locale.toLanguageTag());
+			st.setBlob(3, new ByteArrayInputStream(title.getBytes(StandardCharsets.UTF_8)));
+			st.setBinaryStream(4, new ByteArrayInputStream(markdown.getBytes(StandardCharsets.UTF_8)));
+			st.execute();
+		}
 	}
 	
 	public record Article(String title, String markdown) {}
 	
 	public Optional<Article> getLatestArticle(String urlName, Locale locale)
 			throws SQLException, IOException {
-		try(CallableStatement st = db.prepareCall("call get_latest_article(?, ?)")) {
+		try(var st = db.prepareCall("call get_latest_article(?, ?)")) {
 			st.setString(1, urlName);
 			st.setString(2, locale.toLanguageTag());
 			ResultSet result = st.executeQuery();
