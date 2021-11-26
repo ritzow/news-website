@@ -2,7 +2,6 @@ package net.ritzow.news;
 
 import j2html.rendering.FlatHtml;
 import j2html.tags.DomContent;
-import j2html.tags.UnescapedText;
 import j2html.tags.specialized.FormTag;
 import j2html.tags.specialized.HtmlTag;
 import java.io.IOException;
@@ -26,7 +25,7 @@ public class PageTemplate {
 				throw new UncheckedIOException(e);
 			}
 		}
-		return new UnescapedText(html.output().toString());
+		return rawHtml(html.output().toString());
 	}
 	
 	public static DomContent dynamic(RequestHandler handler) {
@@ -35,7 +34,17 @@ public class PageTemplate {
 	
 	public static DomContent translated(String name) {
 		return new RequestHandlerContent(state ->
-			new UnescapedText(state.translator().forPrioritized(name, HttpUser.localesForUser(state.request()))));
+			rawHtml(state.translator().forPrioritized(name, HttpUser.localesForUser(state.request()))));
+	}
+	
+	public static DomContent mainBox(DomContent... content) {
+		return div().withClasses("main-box", "foreground").with(content);
+	}
+	
+	public static DomContent articleBox(String title, String url) {
+		return a().withClasses("foreground", "article-box").withHref(url).with(
+			span(title)
+		);
 	}
 	
 	public static DomContent logo(String logoPath) {
@@ -57,7 +66,7 @@ public class PageTemplate {
 			title(title),
 			link()
 				.withRel("shortcut icon")
-				.withHref("/favicon.ico")
+				.withHref("/icon.svg")
 				.withType("image/svg+xml"),
 			link()
 				.withRel("search")
@@ -74,33 +83,32 @@ public class PageTemplate {
 	}
 	
 	private static FormTag mainForm() {
-		return form().withName("main").withAction("/form/main")
+		return form().withId("main").withAction("/form/main")
 			.withMethod("POST").withEnctype("multipart/form-data").with(
 			p("Username:"),
 			input()
 				.withCondRequired(true)
 				.withClass("form-element")
 				.withType("text")
-				.withName("username")
+				.withId("username")
 				.withPlaceholder("Username"),
 			p("Password:"),
 			input()
 				.withCondRequired(true)
 				.withClass("form-element")
 				.withType("password")
-				.withName("password")
+				.withId("password")
 				.withPlaceholder("Password"),
 			p().with(
 				label("File upload: ").withFor("upload-field"),
 				input()
 					.withType("file")
 					.withId("upload-field")
-				//.withName("upload")
 			),
 			p("Echo:"),
 			textarea()
 				.withClass("form-element")
-				.withName("comment")
+				.withId("comment")
 				.withPlaceholder("Type some text here."),
 			p(input().withType("submit")),
 			a(

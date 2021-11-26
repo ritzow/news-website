@@ -46,7 +46,6 @@ public class JettySetup {
 			public void handle(String target, Request baseRequest,
 				HttpServletRequest request, HttpServletResponse response) throws IOException, ServletException {
 				errorHandler.handle(target, baseRequest, request, response);
-				baseRequest.setHandled(true);
 			}
 		};
 		if(DEBUG) {

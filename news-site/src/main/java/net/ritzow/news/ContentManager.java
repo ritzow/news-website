@@ -1,30 +1,44 @@
 package net.ritzow.news;
 
+import com.zaxxer.hikari.HikariDataSource;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.Reader;
 import java.nio.charset.StandardCharsets;
-import java.sql.*;
+import java.sql.Blob;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
 import java.util.*;
 import java.util.Map.Entry;
+import java.util.function.Function;
+import javax.sql.DataSource;
 
 import static java.util.Map.entry;
 
 public final class ContentManager {
-	private final Connection db;
+	private final DataSource db;
 	
 	public static ContentManager ofMemoryDatabase() throws SQLException {
-		return new ContentManager(DriverManager.getConnection("jdbc:hsqldb:mem:test", properties(
+		HikariDataSource pool = new HikariDataSource();
+		pool.setJdbcUrl("jdbc:hsqldb:mem:test");
+		pool.setDataSourceProperties(properties(
 			entry("user", "SA")
-		)));
+		));
+		
+		return new ContentManager(pool);
 	}
 	
-	private ContentManager(Connection db) throws SQLException {
+	private ContentManager(DataSource db) throws SQLException {
 		this.db = db;
 		initNew();
 	}
 	
 	public void shutdown() throws SQLException {
-		db.prepareStatement("SHUTDOWN").execute();
+		try(var db = this.db.getConnection()) {
+			db.prepareStatement("SHUTDOWN").execute();
+		}
 	}
 	
 	@SafeVarargs
@@ -69,14 +83,20 @@ public final class ContentManager {
 		uploadLocales();
 		
 		runMultiple(
+			//TODO use MERGE statement to insert
+//			--MERGE INTO articles (urlname, locale_original)
+//				--	VALUES (in_urlname, locale_id) AS tuple
+//				--	ON urlname = in_urlname
+//				--	WHEN NOT MATCHED THEN INSERT VALUES tuple;
 			"""
-			CREATE PROCEDURE new_article(IN urlname URLNAME, IN locale_original LOCALENAME,
+			CREATE PROCEDURE new_article(IN in_urlname URLNAME, IN locale_original LOCALENAME,
 				IN title BLOB, IN markdown BLOB)
 			MODIFIES SQL DATA
 			BEGIN ATOMIC
 				DECLARE locale_id SMALLINT DEFAULT NULL;
+				DECLARE article_id INTEGER;
 				SELECT id INTO locale_id FROM locales WHERE code = locale_original;
-				INSERT INTO articles (urlname, locale_original) VALUES(urlname, locale_id);
+				INSERT INTO articles (urlname, locale_original) VALUES(in_urlname, locale_id);
 				INSERT INTO articles_content (id, locale, title, markdown, revision)
 					VALUES (IDENTITY(), locale_id, title, markdown, 0);
 			END
@@ -109,85 +129,144 @@ public final class ContentManager {
                     INNER JOIN locales ON articles_content.locale = locales.id
                     WHERE articles.urlname = in_urlname);
             END
-            """
+            """,
+			//TODO current gets all rvisions
+			"""
+			CREATE FUNCTION get_all_articles_for_locale(IN in_locale LOCALENAME)
+				RETURNS TABLE (id INTEGER, urlname URLNAME, title BLOB)
+				READS SQL DATA
+			BEGIN ATOMIC
+				RETURN TABLE (
+					SELECT articles.id, articles.urlname, articles_content.title
+					FROM articles
+					INNER JOIN articles_content ON articles.id = articles_content.id
+					INNER JOIN locales ON articles_content.locale = locales.id
+					WHERE articles_content.locale = (SELECT locales.id FROM locales WHERE locales.code = in_locale)
+				);
+			END
+			"""
 		);
 	}
 	
-	private void runMultiple(String... sql) throws SQLException {
-		try(Statement st = db.createStatement()) {
-			for(String query : sql) {
-				st.addBatch(query);
+	private void runMultiple(String... sql) {
+		try {
+			try(var db = this.db.getConnection()) {
+				try(Statement st = db.createStatement()) {
+					for(String query : sql) {
+						st.addBatch(query);
+					}
+					st.executeBatch();
+				}
 			}
-			st.executeBatch();
+		} catch(SQLException e) {
+			var it = e.iterator();
+			while(it.hasNext()) {
+				it.next().printStackTrace();
+			}
 		}
 	}
 	
 	private void uploadLocales() throws SQLException {
-		try(var st = db.prepareStatement("INSERT INTO locales (code) VALUES (?)")) {
-			for(Locale locale : List.of(
-				Locale.forLanguageTag("en-US"),
-				Locale.forLanguageTag("es"),
-				Locale.forLanguageTag("ru"),
-				Locale.forLanguageTag("zh")
-			)) {
-				st.setString(1, locale.toLanguageTag());
-				st.addBatch();
+		try(var db = this.db.getConnection()) {
+			try(var st = db.prepareStatement("INSERT INTO locales (code) VALUES (?)")) {
+				for(Locale locale : List.of(
+					Locale.forLanguageTag("en-US"),
+					Locale.forLanguageTag("es"),
+					Locale.forLanguageTag("ru"),
+					Locale.forLanguageTag("zh")
+				)) {
+					st.setString(1, locale.toLanguageTag());
+					st.addBatch();
+				}
+				st.executeBatch();
 			}
-			st.executeBatch();
+		}
+	}
+	
+	public record Article3(String urlname, String title) {
+	
+	}
+	
+	public List<Article3> getArticlesForLocale(Locale locale) throws SQLException, IOException {
+		try(var db = this.db.getConnection()) {
+			try(var st = db.prepareCall("call get_all_articles_for_locale(?)")) {
+				st.setString(1, locale.toLanguageTag());
+				ResultSet result = st.executeQuery();
+				List<Article3> articles = new ArrayList<>();
+				while(result.next()) {
+					Blob title = result.getBlob("title");
+					articles.add(new Article3(result.getString("urlname"), readBlobUtf8(title)));
+					title.free();
+				}
+				return articles;
+			}
 		}
 	}
 	
 	public List<Entry<Short, String>> getSupportedLocales() throws SQLException {
-		try(var st = db.prepareStatement("SELECT id, code FROM locales")) {
-			ResultSet result = st.executeQuery();
-			var list = new ArrayList<Entry<Short, String>>(4);
-			while(result.next()) {
-				list.add(entry(result.getShort("id"), result.getString("code")));
+		try(var db = this.db.getConnection()) {
+			try(var st = db.prepareStatement("SELECT id, code FROM locales")) {
+				ResultSet result = st.executeQuery();
+				var list = new ArrayList<Entry<Short, String>>(4);
+				while(result.next()) {
+					list.add(entry(result.getShort("id"), result.getString("code")));
+				}
+				return list;
 			}
-			return list;
 		}
 	}
 	
 	public List<Locale> getArticleLocales(String urlname) throws SQLException {
-		try(var st = db.prepareCall("call get_article_langs(?)")) {
-			st.setString(1, urlname);
-			ResultSet result = st.executeQuery();
-			List<Locale> locales = new ArrayList<>(4);
-			while(result.next()) {
-				locales.add(Locale.forLanguageTag(result.getString(1)));
+		try(var db = this.db.getConnection()) {
+			try(var st = db.prepareCall("call get_article_langs(?)")) {
+				st.setString(1, urlname);
+				try(ResultSet result = st.executeQuery()) {
+					List<Locale> locales = new ArrayList<>(4);
+					while(result.next()) {
+						locales.add(Locale.forLanguageTag(result.getString(1)));
+					}
+					return locales;
+				}
 			}
-			return locales;
 		}
 	}
 	
 	public void newArticle(String urlName, Locale locale, String title, String markdown) throws SQLException {
-		try(var st = db.prepareCall("call new_article(?, ?, ?, ?)")) {
-			st.setString(1, urlName);
-			st.setString(2, locale.toLanguageTag());
-			st.setBlob(3, new ByteArrayInputStream(title.getBytes(StandardCharsets.UTF_8)));
-			st.setBinaryStream(4, new ByteArrayInputStream(markdown.getBytes(StandardCharsets.UTF_8)));
-			st.execute();
+		try(var db = this.db.getConnection()) {
+			try(var st = db.prepareCall("call new_article(?, ?, ?, ?)")) {
+				st.setString(1, urlName);
+				st.setString(2, locale.toLanguageTag());
+				st.setBlob(3, new ByteArrayInputStream(title.getBytes(StandardCharsets.UTF_8)));
+				st.setBinaryStream(4, new ByteArrayInputStream(markdown.getBytes(StandardCharsets.UTF_8)));
+				st.execute();
+			}
 		}
 	}
 	
-	public record Article(String title, String markdown) {}
+	public record Article<T>(String title, T content) {}
 	
-	public Optional<Article> getLatestArticle(String urlName, Locale locale)
+	/* Returned reader must be closed */
+	public <T> Optional<Article<T>> getLatestArticle(String urlName, Locale locale, Function<Reader, T> transform)
 			throws SQLException, IOException {
-		try(var st = db.prepareCall("call get_latest_article(?, ?)")) {
-			st.setString(1, urlName);
-			st.setString(2, locale.toLanguageTag());
-			ResultSet result = st.executeQuery();
-			if(result.next()) {
-				Blob blob = result.getBlob("title");
-				String title = readBlobUtf8(blob);
-				blob.free();
-				blob = result.getBlob("markdown");
-				String markdown = readBlobUtf8(blob);
-				blob.free();
-				return Optional.of(new Article(title, markdown));
-			} else {
-				return Optional.empty();
+		try(var db = this.db.getConnection()) {
+			try(var st = db.prepareCall("call get_latest_article(?, ?)")) {
+				st.setString(1, urlName);
+				st.setString(2, locale.toLanguageTag());
+				try(ResultSet result = st.executeQuery()) {
+					if(result.next()) {
+						Blob blob = result.getBlob("title");
+						String title = readBlobUtf8(blob);
+						blob.free();
+						blob = result.getBlob("markdown");
+						//String markdown = readBlobUtf8(blob);
+						//blob.free();
+						var content = transform.apply(new InputStreamReader(blob.getBinaryStream(), StandardCharsets.UTF_8));
+						blob.free();
+						return Optional.of(new Article<>(title, content));
+					} else {
+						return Optional.empty();
+					}
+				}
 			}
 		}
 	}

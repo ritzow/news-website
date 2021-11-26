@@ -24,11 +24,16 @@ public class StaticPathHandler extends AbstractHandler {
 		return request.getHttpURI().getDecodedPath().substring(currentIndex(request));
 	}
 	
-	public static Optional<String> nextComponent(Request request) {
+	public static Optional<String> peekComponent(Request request) {
 		String path = request.getHttpURI().getDecodedPath();
 		int index = currentIndex(request);
 		int endIndex = end(path, index);
 		return endIndex - index > 1 ? Optional.of(path.substring(index + 1, endIndex)) : Optional.empty();
+	}
+	
+	public static Optional<String> consumeComponent(Request request) {
+		//return Optional.empty();
+		throw new UnsupportedOperationException("Not implemented");
 	}
 	
 	StaticPathHandler(Handler handler, Entry<String, Handler>[] paths) {
@@ -63,11 +68,16 @@ public class StaticPathHandler extends AbstractHandler {
 		
 		Handler handler;
 		if(endIndex - index > 1) {
-			baseRequest.getAttributes().setAttribute(PATH_ATTRIBUTE_NAME, endIndex);
 			handler = subpaths.get(path.substring(index, endIndex));
+			if(handler != null) {
+				baseRequest.getAttributes().setAttribute(PATH_ATTRIBUTE_NAME, endIndex);
+			} else {
+				handler = leafHandler;
+			}
 		} else {
 			handler = leafHandler;
 		}
+		
 		if(handler != null) {
 			handler.handle(target, baseRequest, request, response);
 		}

@@ -4,4 +4,5 @@ module net.ritzow.news {
 	requires org.commonmark;
 	requires org.hsqldb;
 	requires java.sql;
+	requires com.zaxxer.hikari;
 }

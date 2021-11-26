@@ -1,31 +1,25 @@
 package net.ritzow.news;
 
-import j2html.Config;
 import j2html.rendering.FlatHtml;
-import j2html.rendering.HtmlBuilder;
 import j2html.tags.DomContent;
-import j2html.tags.UnescapedText;
 import j2html.tags.specialized.HtmlTag;
-import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
-import java.io.*;
-import java.net.URL;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.UncheckedIOException;
+import java.io.Writer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
-import java.security.DigestOutputStream;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.sql.SQLException;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.FormatStyle;
 import java.util.*;
 import java.util.function.Function;
+import java.util.stream.Stream;
 import net.ritzow.jetstart.*;
 import net.ritzow.news.ContentManager.Article;
-import org.commonmark.parser.Parser;
-import org.commonmark.renderer.html.HtmlRenderer;
 import org.eclipse.jetty.http.HttpHeader;
 import org.eclipse.jetty.http.HttpStatus;
 import org.eclipse.jetty.server.Handler;
@@ -35,37 +29,47 @@ import org.eclipse.jetty.server.handler.AbstractHandler;
 import static j2html.TagCreator.*;
 import static java.util.Map.entry;
 import static net.ritzow.jetstart.JettyHandlers.newPath;
-import static net.ritzow.jetstart.JettyHandlers.newResource;
 import static net.ritzow.news.PageTemplate.*;
 
 public class RunSite {
 	
 	private static ContentManager cm;
 	
-	private static final String WEBSITE_LOGO = "/favicon.ico";
-	
 	public static void main(String[] args) throws Exception {
 		cm = ContentManager.ofMemoryDatabase();
 		cm.newArticle("sandbox2d", Locale.forLanguageTag("en-US"), "Sandbox2D Readme", TempContent.markdown);
+		//cm.newArticle("sandbox2d", Locale.forLanguageTag("en-US"), "Sandbox2D Readme v2", TempContent.markdown);
 		cm.newArticle("blahblah", Locale.forLanguageTag("es"), "Sandbox2D Readme Spanish", "***HELLO!!!***");
+		
+		SplittableRandom random = new SplittableRandom(0);
+		
+		for(int i = 0; i < 25; i++) {
+			cm.newArticle(Integer.toHexString(i),
+				Locale.forLanguageTag("en-US"), generateGibberish(random, 3, 5), generateGibberish(random, random.nextInt(200, 1000), 6));
+		}
 		
 		/* TODO use integrity attribute to verify content if delivered via CDN */
 		/* TODO and use crossorigin="anonymous" */
+		//TODO set loading="lazy" on img HTML elements.
+		
+		var faviconHandler = new StaticContentHandler("/image/icon.svg", "image/svg+xml");
+		
 		var server = JettySetup.newStandardServer(
 			Path.of(System.getProperty("net.ritzow.certs")), System.getProperty("net.ritzow.pass"),
 			newPath(
-				genericPage(PAGE_OUTLINE, Map.of(
-					"content", p("PLACEHOLDER!!!")
-				)),
-				entry("/opensearch", newResource(resource("/xml/opensearch.xml"), "application/opensearchdescription+xml")),
-				entry("/style.css", newResource(resource("/css/global.css"), "text/css")),
-				entry(WEBSITE_LOGO, newResource(resource("/image/icon.svg"), "image/svg+xml")),
-				entry("/article", articlePages(TRANSLATIONS, cm))
+				dynamicHandler(RunSite::mainPageGenerator, TRANSLATIONS),
+				entry("/opensearch", new StaticContentHandler("/xml/opensearch.xml", "application/opensearchdescription+xml")),
+				entry("/style.css", new StaticContentHandler("/css/global.css", "text/css")),
+				//entry(WEBSITE_LOGO, faviconHandler),
+				entry("/article", dynamicHandler(RunSite::articlePageGenerator, TRANSLATIONS)),
+				entry("/icon.svg", faviconHandler)
 			),
-			genericPage(PAGE_OUTLINE, Map.of("content", p("Sorry! There was an error!")))
+			dynamicHandler(RunSite::errorGenerator, TRANSLATIONS)
 		);
 		
 		server.start();
+		
+//		JmDNS mdns = JmDNS.create(InetAddress.getLocalHost(), "news.local");
 		
 		/* Shutdown on user input */
 		try(var in = new Scanner(System.in)) {
@@ -74,6 +78,7 @@ public class RunSite {
 		
 		System.out.println("Stopping server...");
 		
+//		mdns.close();
 		server.stop();
 		cm.shutdown();
 		server.join();
@@ -82,73 +87,95 @@ public class RunSite {
 	private static final HtmlTag PAGE_OUTLINE = fullPage("RedNet",
 		div()/*.withLang("es")*/.withClass("page-body").with(
 			freeze(
-				div().withClasses("header", "foreground").with(
-					//span("RedNet!")
-					logo(WEBSITE_LOGO)
-				)
+				div().withClasses("header", "foreground").with(logo("/icon.svg"))
 			),
-			div().withClasses("main-box", "foreground").with(
-				freeze(
-					h1("Welcome to RedNet!").withClass("title")
-				),
+			mainBox(
 				dynamic(state -> state.named("content"))
 			)
 		),
 		div().withClass("page-separator"),
 		footer().withClasses("page-footer", "footer", "foreground").with(
-			span(text("Server Time: "), dynamic(state -> new UnescapedText(ZonedDateTime.now().format(
-				DateTimeFormatter.ofLocalizedDateTime(FormatStyle.LONG).withLocale(Locale.ROOT)))))
+			span(
+				text("Server Time: "),
+				dynamic(state -> rawHtml(ZonedDateTime.now().format(
+					DateTimeFormatter.ofLocalizedDateTime(FormatStyle.LONG).withLocale(Locale.ROOT)))),
+				text(" Heap: "),
+				dynamic(state -> text((Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory())/1000 + " KB"))
+			)
 		)
 	);
 	
 	private static final Translator<String> TRANSLATIONS =
 		Translator.ofProperties(properties("/lang/welcome.properties"));
 	
-	/** Returns SHA-512 of response content **/
-	public static byte[] doGet(Request request, Translator<String> translations,
+	public static void doGet(Request request, Translator<String> translations,
 		Function<Request, HtmlResult> onRequest) throws IOException {
-		MessageDigest hasher;
-		try {
-			//TODO use this for the other resources, not the html
-			hasher = MessageDigest.getInstance("SHA-512");
-		} catch(NoSuchAlgorithmException e) {
-			throw new RuntimeException(e);
-		}
-		Writer body = new OutputStreamWriter(
-			new DigestOutputStream(
-				request.getResponse().getOutputStream(), hasher
-			), StandardCharsets.UTF_8
-		);
-		body.append(document().render()).append('\n');
+		
+		/* Generate result first to catch errors early */
 		HtmlResult result = onRequest.apply(request);
-		result.html().render(FlatHtml.into(body, Config.global()), new HtmlSessionState(request, translations, result.named()));
+		
+		request.getResponse().setStatus(result.status());
+		request.getResponse().setHeader(HttpHeader.TRANSFER_ENCODING, "chunked");
+		request.getResponse().setContentType("text/html; charset=utf-8");
+		request.getResponse().setHeader(HttpHeader.CACHE_CONTROL, "no-store");
+		request.getResponse().setHeader(HttpHeader.REFERER, "no-referrer");
+		
+//		MessageDigest hasher;
+//		try {
+//			//TODO use this for the other resources, not the html
+//			hasher = MessageDigest.getInstance("SHA-512");
+//		} catch(NoSuchAlgorithmException e) {
+//			throw new RuntimeException(e);
+//		}
+		Writer body = request.getResponse().getWriter();
+//		new OutputStreamWriter(
+//			new DigestOutputStream(
+//				request.getResponse().getOutputStream(), hasher
+//			), StandardCharsets.UTF_8
+//		);
+		Object model = new HtmlSessionState(request, translations, result.named());
+		result.html().render(FlatHtml.into(body).appendUnescapedText("<!DOCTYPE html>"), model);
 		body.flush();
-		request.getResponse().setContentType("text/html");
-		//TODO allow other status codes
-		request.getResponse().setStatus(HttpStatus.OK_200);
-		request.getResponse().getHttpFields().add(HttpHeader.CACHE_CONTROL, "no-store");
-		//request.getResponse().getHttpFields().add(HttpHeader.ETAG, ContentUtils.generateTimeEtag());
-		/* TODO generate etag value from content written to body outputstream */
 		request.setHandled(true);
-		return hasher.digest();
 	}
 	
-	private static Handler articlePages(Translator<String> translator, ContentManager cm) {
+	private static Handler dynamicHandler(Function<Request, HtmlResult> function, Translator<String> translator) {
 		return new AbstractHandler() {
 			@Override
 			public void handle(String target, Request baseRequest, HttpServletRequest
 					request, HttpServletResponse response) throws IOException {
-				byte[] out = doGet(baseRequest, translator, RunSite::blah);
-				System.out.println(baseRequest.getHttpURI() + " sha512-" + Base64.getEncoder().withoutPadding().encodeToString(out));
+				doGet(baseRequest, translator, function);
 			}
 		};
 	}
 	
-	private static HtmlResult blah(Request request) {
-		Optional<String> name = StaticPathHandler.nextComponent(request);
+	private static HtmlResult mainPageGenerator(Request request) {
+		if(StaticPathHandler.peekComponent(request).isEmpty()) {
+			try {
+				return new HtmlResult(PAGE_OUTLINE, Map.of(
+					"content", div().withClass("article-list").with(
+						Stream.concat(
+							Stream.of(
+								h1(translated("greeting")).withClass("title")
+							),
+							cm.getArticlesForLocale(HttpUser.localesForUser(request).get(0)).stream().map(
+								article3 -> articleBox(article3.title(), "/article/" + article3.urlname())
+							)
+						).toArray(DomContent[]::new)
+					)
+				));
+			} catch(SQLException | IOException e) {
+				throw new RuntimeException(e);
+			}
+		} else {
+			throw new RuntimeException("invalid");
+		}
+	}
+	
+	private static HtmlResult articlePageGenerator(Request request) {
+		Optional<String> name = StaticPathHandler.peekComponent(request);
 		if(name.isPresent()) {
 			try {
-				/* TODO if has session, see if language is overriden first */
 				String urlname = name.get();
 				List<Locale> supported = cm.getArticleLocales(urlname);
 				DomContent content;
@@ -156,19 +183,17 @@ public class RunSite {
 					content = p("No such article " + urlname);
 				} else {
 					Locale lang = HttpUser.bestLocale(request, supported);
-					Optional<Article> article = cm.getLatestArticle(urlname, lang);
+					Optional<Article<MarkdownContent>> article = cm.getLatestArticle(urlname, lang, reader -> {
+						try {
+							return new MarkdownContent(reader);
+						} catch(IOException e) {
+							throw new UncheckedIOException(e);
+						}
+					});
 					if(article.isPresent()) {
 						content = div().withLang(lang.toLanguageTag()).with(
 							h1(article.get().title()).withClass("title-article"),
-							div().withClass("markdown").with(
-								new DomContent() {
-									@Override
-									public <T extends Appendable> T render(HtmlBuilder<T> builder, Object model) {
-										convertMarkdownToHtml(article.get().markdown(), builder.output());
-										return builder.output();
-									}
-								}
-							)
+							div().withClass("markdown").with(article.get().content())
 						);
 					} else {
 						content = p("No such article " + urlname);
@@ -176,8 +201,6 @@ public class RunSite {
 				}
 				return new HtmlResult(PAGE_OUTLINE, Map.of("content", content));
 			} catch(SQLException | IOException e) {
-				//e.printStackTrace();
-				//content = p("An internal error occurred, sorry for the inconvenience.");
 				throw new RuntimeException(e);
 			}
 		} else {
@@ -185,19 +208,15 @@ public class RunSite {
 		}
 	}
 	
-	private static Handler genericPage(HtmlTag page, Map<String, DomContent> map) {
-		var result = new HtmlResult(page, map);
-		return new AbstractHandler() {
-			@Override
-			public void handle(String target, Request baseRequest, HttpServletRequest request,
-					HttpServletResponse response) throws IOException, ServletException {
-				doGet(baseRequest, TRANSLATIONS, req -> result);
-			}
-		};
-	}
-	
-	private static URL resource(String path) {
-		return RunSite.class.getResource(path);
+	private static HtmlResult errorGenerator(Request request) {
+		var html = fullPage("Error",
+			mainBox(
+				p("Sorry, there was an error!"),
+				a("Go home").withHref("/")
+			)
+		);
+		
+		return new HtmlResult(html, Map.of(), HttpStatus.NOT_FOUND_404);
 	}
 	
 	private static Properties properties(String path) {
@@ -210,18 +229,9 @@ public class RunSite {
 		}
 	}
 	
-	private static void convertMarkdownToHtml(String markdown, Appendable output)  {
-		HtmlRenderer.builder().escapeHtml(true).build().render(Parser.builder().build().parse(markdown), output);
-	}
-	
 	private static final String VALID_CHARS = "abcdefghijklmnopqrstuvwxyz";
 	
-	private static String generateSomeGibberish() {
-		return generateGibberish(100 + new Random().nextInt(500), 8);
-	}
-	
-	private static String generateGibberish(int words, int maxWordSize) {
-		SplittableRandom random = new SplittableRandom();
+	private static String generateGibberish(SplittableRandom random, int words, int maxWordSize) {
 		StringBuilder builder = new StringBuilder(words * maxWordSize/2);
 		for(int i = 0; i < words; i++) {
 			char[] word = new char[random.nextInt(maxWordSize + 1) + 1];
@@ -235,4 +245,5 @@ public class RunSite {
 		}
 		return builder.toString();
 	}
+	
 }

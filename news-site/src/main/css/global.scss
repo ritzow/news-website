@@ -10,10 +10,11 @@
 	--pad: 10px;
 
 	--logo-hover: drop-shadow(0 0 8px rgba(255, 0, 0, 0.5));
-	
+	--shadow: drop-shadow(0 0 8px rgba(0, 0, 0, 0.5));
+
 	/* html element must be sized https://stackoverflow.com/a/7049918/2442171 */
 	height: 100%;
-	
+
 	scrollbar-color: rgb(73, 73, 73) var(--bg);
 
 	/* Remove default margin around content */
@@ -47,7 +48,7 @@
 	background-color: var(--fg);
 	padding: var(--pad);
 	font-family: sans-serif;
-	filter: drop-shadow(0 0 8px rgba(0, 0, 0, 0.5));
+	filter: var(--shadow);
 }
 
 .header {
@@ -57,13 +58,13 @@
 	width: min-content;
 	margin-left: 5%;
 	margin-right: auto;
+	user-select: none;
 }
 
 .logo {
 	display: inline-block;
 	white-space: nowrap;
 	text-decoration: none;
-	user-select: none;
 	font-size: 200%;
 	transition: filter 500ms;
 }
@@ -92,6 +93,18 @@
 	margin-left: auto;
 	margin-right: auto;
 	max-width: 500px;
+}
+
+.article-box {
+	text-decoration: none;
+	color: black;
+	margin: var(--pad);
+	border-radius: var(--radius);
+	display: inline-block;
+}
+
+.article-box:hover {
+	filter: var(--shadow) brightness(85%);
 }
 
 /* TODO fix this stuff to work better again */

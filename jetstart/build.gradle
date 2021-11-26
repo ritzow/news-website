@@ -1,5 +1,5 @@
 plugins {
-	id 'java'
+	id 'java-library'
 }
 
 repositories {
@@ -13,5 +13,5 @@ dependencies {
 	implementation 'org.eclipse.jetty.http2:http2-server:11.0.7'
 	implementation 'org.eclipse.jetty:jetty-alpn-java-server:11.0.7'
 	implementation 'com.j2html:j2html:1.5.0'
-	//implementation 'org.thymeleaf:thymeleaf:3.0.12.RELEASE'
+	//implementation org.glassfish.grizzly:grizzly-http-server:2.4.4
 }
