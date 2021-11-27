@@ -3,6 +3,7 @@ module net.ritzow.news {
 	requires com.j2html;
 	requires org.commonmark;
 	requires org.hsqldb;
+	requires org.hsqldb.sqltool;
 	requires java.sql;
 	requires com.zaxxer.hikari;
 }

@@ -3,11 +3,13 @@ package net.ritzow.news;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
+import java.io.InputStream;
 import java.lang.ref.SoftReference;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
 import java.util.Base64;
+import java.util.function.Supplier;
 import org.eclipse.jetty.http.HttpField;
 import org.eclipse.jetty.http.HttpHeader;
 import org.eclipse.jetty.http.HttpStatus;
@@ -17,11 +19,11 @@ import org.eclipse.jetty.server.handler.AbstractHandler;
 
 class StaticContentHandler extends AbstractHandler {
 	private final String contentType;
-	private final String resource;
+	private final Supplier<InputStream> resource;
 	private SoftReference<byte[]> content;
 	private String etag;
 	
-	public StaticContentHandler(String resource, String contentType) {
+	public StaticContentHandler(Supplier<InputStream> resource, String contentType) {
 		this.contentType = contentType;
 		this.resource = resource;
 		content = new SoftReference<>(null);
@@ -66,7 +68,7 @@ class StaticContentHandler extends AbstractHandler {
 	
 	private byte[] load() throws IOException {
 		byte[] data;
-		try(var in = RunSite.class.getResourceAsStream(resource)) {
+		try(var in = resource.get()) {
 			data = in.readAllBytes();
 			if(etag == null) {
 				MessageDigest hash = MessageDigest.getInstance("SHA-512");

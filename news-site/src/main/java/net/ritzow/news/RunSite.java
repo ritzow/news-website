@@ -37,8 +37,10 @@ public class RunSite {
 	
 	public static void main(String[] args) throws Exception {
 		cm = ContentManager.ofMemoryDatabase();
-		cm.newArticle("sandbox2d", Locale.forLanguageTag("en-US"), "Sandbox2D Readme", TempContent.markdown);
-		//cm.newArticle("sandbox2d", Locale.forLanguageTag("en-US"), "Sandbox2D Readme v2", TempContent.markdown);
+		var content = resourceAsString("/content/Sandbox2D.md");
+		cm.newArticle("sandbox2d", Locale.forLanguageTag("en-US"), "Sandbox2D Readme", content);
+		cm.newArticle("sandbox2d", Locale.forLanguageTag("en-US"), "Sandbox2D Readme v2", content + "\n\nAND SOME EXTRA.");
+		//cm.newArticle("sandbox2d", Locale.forLanguageTag("es-US"), "Sandbox2D Readme v2 Spanish", content);
 		cm.newArticle("blahblah", Locale.forLanguageTag("es"), "Sandbox2D Readme Spanish", "***HELLO!!!***");
 		
 		SplittableRandom random = new SplittableRandom(0);
@@ -52,17 +54,14 @@ public class RunSite {
 		/* TODO and use crossorigin="anonymous" */
 		//TODO set loading="lazy" on img HTML elements.
 		
-		var faviconHandler = new StaticContentHandler("/image/icon.svg", "image/svg+xml");
-		
 		var server = JettySetup.newStandardServer(
 			Path.of(System.getProperty("net.ritzow.certs")), System.getProperty("net.ritzow.pass"),
 			newPath(
 				dynamicHandler(RunSite::mainPageGenerator, TRANSLATIONS),
-				entry("/opensearch", new StaticContentHandler("/xml/opensearch.xml", "application/opensearchdescription+xml")),
-				entry("/style.css", new StaticContentHandler("/css/global.css", "text/css")),
-				//entry(WEBSITE_LOGO, faviconHandler),
+				entry("/opensearch", new StaticContentHandler(open("/xml/opensearch.xml"), "application/opensearchdescription+xml")),
+				entry("/style.css", new StaticContentHandler(open("/css/global.css"), "text/css")),
 				entry("/article", dynamicHandler(RunSite::articlePageGenerator, TRANSLATIONS)),
-				entry("/icon.svg", faviconHandler)
+				entry("/icon.svg", new StaticContentHandler(open("/image/icon.svg"), "image/svg+xml"))
 			),
 			dynamicHandler(RunSite::errorGenerator, TRANSLATIONS)
 		);
@@ -82,6 +81,16 @@ public class RunSite {
 		server.stop();
 		cm.shutdown();
 		server.join();
+	}
+	
+	private static String resourceAsString(String resource) throws IOException {
+		try(var in = RunSite.class.getResourceAsStream(resource)) {
+			return new String(in.readAllBytes(), StandardCharsets.UTF_8);
+		}
+	}
+	
+	private static Supplier<InputStream> open(String resource) {
+		return () -> RunSite.class.getResourceAsStream(resource);
 	}
 	
 	private static final HtmlTag PAGE_OUTLINE = fullPage("RedNet",
@@ -113,26 +122,12 @@ public class RunSite {
 		
 		/* Generate result first to catch errors early */
 		HtmlResult result = onRequest.apply(request);
-		
 		request.getResponse().setStatus(result.status());
 		request.getResponse().setHeader(HttpHeader.TRANSFER_ENCODING, "chunked");
 		request.getResponse().setContentType("text/html; charset=utf-8");
 		request.getResponse().setHeader(HttpHeader.CACHE_CONTROL, "no-store");
 		request.getResponse().setHeader(HttpHeader.REFERER, "no-referrer");
-		
-//		MessageDigest hasher;
-//		try {
-//			//TODO use this for the other resources, not the html
-//			hasher = MessageDigest.getInstance("SHA-512");
-//		} catch(NoSuchAlgorithmException e) {
-//			throw new RuntimeException(e);
-//		}
 		Writer body = request.getResponse().getWriter();
-//		new OutputStreamWriter(
-//			new DigestOutputStream(
-//				request.getResponse().getOutputStream(), hasher
-//			), StandardCharsets.UTF_8
-//		);
 		Object model = new HtmlSessionState(request, translations, result.named());
 		result.html().render(FlatHtml.into(body).appendUnescapedText("<!DOCTYPE html>"), model);
 		body.flush();
@@ -150,7 +145,8 @@ public class RunSite {
 	}
 	
 	private static HtmlResult mainPageGenerator(Request request) {
-		if(StaticPathHandler.peekComponent(request).isEmpty()) {
+		Optional<String> next = StaticPathHandler.peekComponent(request);
+		if(next.isEmpty()) {
 			try {
 				return new HtmlResult(PAGE_OUTLINE, Map.of(
 					"content", div().withClass("article-list").with(
@@ -168,7 +164,10 @@ public class RunSite {
 				throw new RuntimeException(e);
 			}
 		} else {
-			throw new RuntimeException("invalid");
+			//errorGenerator(request);
+			//return new HtmlResult(null, Map.of(), 404);
+			//TODO allow error returns, create better error handling framework
+			throw new RuntimeException("invalid page " + next.get());
 		}
 	}
 	
