@@ -5,10 +5,8 @@ import j2html.tags.DomContent;
 import j2html.tags.specialized.HtmlTag;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
-import java.io.IOException;
-import java.io.InputStreamReader;
-import java.io.UncheckedIOException;
-import java.io.Writer;
+import java.io.*;
+import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.sql.SQLException;
@@ -17,6 +15,7 @@ import java.time.format.DateTimeFormatter;
 import java.time.format.FormatStyle;
 import java.util.*;
 import java.util.function.Function;
+import java.util.function.Supplier;
 import java.util.stream.Stream;
 import net.ritzow.jetstart.*;
 import net.ritzow.news.ContentManager.Article;
@@ -25,6 +24,7 @@ import org.eclipse.jetty.http.HttpStatus;
 import org.eclipse.jetty.server.Handler;
 import org.eclipse.jetty.server.Request;
 import org.eclipse.jetty.server.handler.AbstractHandler;
+import org.hsqldb.cmdline.SqlFile;
 
 import static j2html.TagCreator.*;
 import static java.util.Map.entry;
@@ -71,12 +71,19 @@ public class RunSite {
 //		JmDNS mdns = JmDNS.create(InetAddress.getLocalHost(), "news.local");
 		
 		/* Shutdown on user input */
-		try(var in = new Scanner(System.in)) {
-			while(!in.next().equals("stop"));
+		try(var reader = new InputStreamReader(System.in);
+		    var scan = new Scanner(reader)) {
+			SqlFile file = new SqlFile(reader, "<stdin>", System.out, "UTF-8", true, (URL)null);
+			while(true) {
+				try(var db = cm.getConnection()) {
+					file.setConnection(db);
+					file.execute();
+				}
+			}
+		} catch(IOException | SQLException e) {
+			e.printStackTrace();
 		}
-		
-		System.out.println("Stopping server...");
-		
+
 //		mdns.close();
 		server.stop();
 		cm.shutdown();

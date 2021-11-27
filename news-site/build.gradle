@@ -16,8 +16,10 @@ dependencies {
 	implementation 'com.j2html:j2html:1.5.0'
 	implementation 'org.eclipse.jetty:jetty-server:11.0.7'
 	implementation 'org.hsqldb:hsqldb:2.6.1'
+	implementation 'org.hsqldb:sqltool:2.6.1'
 	implementation 'org.commonmark:commonmark:0.18.0'
 	implementation 'com.zaxxer:HikariCP:5.0.0'
+	//implementation 'com.h2database:h2:2.0.202'
 }
 
 import java.nio.file.Files
@@ -30,7 +32,7 @@ try(def file = Files.newBufferedReader(projectDir.toPath().resolve('project.prop
 
 processResources {
 	from('src/main') {
-		include 'image/**', 'xml/**', 'lang/**'
+		include 'image/**', 'xml/**', 'lang/**', 'content/**'
 	}
 }
 
