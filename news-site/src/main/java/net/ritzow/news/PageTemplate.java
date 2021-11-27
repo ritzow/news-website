@@ -48,8 +48,14 @@ public class PageTemplate {
 	}
 	
 	public static DomContent logo(String logoPath) {
-		return a().withClass("logo").withHref("/").with(
-			img().withClass("logo-img").withWidth("50px").withHeight("50px").withAlt("RedNet Logo Red Circle").withSrc(logoPath),
+		return a().withCondDraggable(false).withClass("logo").withHref("/").with(
+			img()
+				.withSrc(logoPath)
+				.withWidth("50px")
+				.withHeight("50px")
+				.withCondDraggable(false)
+				.withClass("logo-img")
+				.withAlt("RedNet Logo Red Circle"),
 			span("RedNet!").withClass("logo-text")
 		);
 	}
@@ -65,7 +71,7 @@ public class PageTemplate {
 		return freeze(head(
 			title(title),
 			link()
-				.withRel("shortcut icon")
+				.withRel("icon")
 				.withHref("/icon.svg")
 				.withType("image/svg+xml"),
 			link()
