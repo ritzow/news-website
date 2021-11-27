@@ -6,13 +6,11 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.Reader;
 import java.nio.charset.StandardCharsets;
-import java.sql.Blob;
-import java.sql.ResultSet;
-import java.sql.SQLException;
-import java.sql.Statement;
+import java.sql.*;
 import java.util.*;
 import java.util.Map.Entry;
 import java.util.function.Function;
+import java.util.stream.Collectors;
 import javax.sql.DataSource;
 
 import static java.util.Map.entry;
@@ -23,6 +21,7 @@ public final class ContentManager {
 	public static ContentManager ofMemoryDatabase() throws SQLException {
 		HikariDataSource pool = new HikariDataSource();
 		pool.setJdbcUrl("jdbc:hsqldb:mem:test");
+		//pool.setJdbcUrl("jdbc:h2:mem:");
 		pool.setDataSourceProperties(properties(
 			entry("user", "SA")
 		));
@@ -95,10 +94,21 @@ public final class ContentManager {
 			BEGIN ATOMIC
 				DECLARE locale_id SMALLINT DEFAULT NULL;
 				DECLARE article_id INTEGER;
+				DECLARE revision_id INTEGER;
 				SELECT id INTO locale_id FROM locales WHERE code = locale_original;
-				INSERT INTO articles (urlname, locale_original) VALUES(in_urlname, locale_id);
+				SELECT id INTO article_id FROM articles WHERE urlname = in_urlname;
+				IF article_id IS NULL THEN
+					INSERT INTO articles (urlname, locale_original) VALUES(in_urlname, locale_id);
+					SET article_id = IDENTITY();
+					SET revision_id = 0;
+				ELSE
+					SET revision_id =
+						(SELECT MAX(revision) + 1 FROM articles_content
+						WHERE articles_content.id = article_id
+						AND articles_content.locale = locale_id);
+				END IF;
 				INSERT INTO articles_content (id, locale, title, markdown, revision)
-					VALUES (IDENTITY(), locale_id, title, markdown, 0);
+					VALUES (article_id, locale_id, title, markdown, revision_id);
 			END
 			""",
 			"""
@@ -130,18 +140,27 @@ public final class ContentManager {
                     WHERE articles.urlname = in_urlname);
             END
             """,
-			//TODO current gets all rvisions
 			"""
 			CREATE FUNCTION get_all_articles_for_locale(IN in_locale LOCALENAME)
 				RETURNS TABLE (id INTEGER, urlname URLNAME, title BLOB)
 				READS SQL DATA
 			BEGIN ATOMIC
+				DECLARE locale_id SMALLINT;
+				SELECT locales.id INTO locale_id FROM locales WHERE locales.code = in_locale;
 				RETURN TABLE (
-					SELECT articles.id, articles.urlname, articles_content.title
-					FROM articles
-					INNER JOIN articles_content ON articles.id = articles_content.id
-					INNER JOIN locales ON articles_content.locale = locales.id
-					WHERE articles_content.locale = (SELECT locales.id FROM locales WHERE locales.code = in_locale)
+					SELECT id, urlname, title
+					FROM (
+						SELECT id, urlname, MAX(revision) AS max_revision
+						FROM articles
+						JOIN articles_content
+						ON articles.id = articles_content.id
+						WHERE articles_content.locale = locale_id
+						GROUP BY id, urlname, locale
+					) AS result
+					JOIN articles_content
+					ON articles_content.id = id
+						AND articles_content.locale = locale_id
+						AND articles_content.revision = result.max_revision
 				);
 			END
 			"""
@@ -157,6 +176,18 @@ public final class ContentManager {
 					}
 					st.executeBatch();
 				}
+			}
+		} catch(BatchUpdateException e) {
+			System.err.println(e.getClass().getCanonicalName() + ": " + e.getMessage());
+			Iterator<String> lines = sql[e.getUpdateCounts().length].lines().iterator();
+			int line = 1;
+			while(lines.hasNext()) {
+				System.err.printf("%5d %s%n", line, lines.next());
+				line++;
+			}
+			if(e.getCause() != null) {
+				System.err.print("Caused by: ");
+				e.getCause().printStackTrace();
 			}
 		} catch(SQLException e) {
 			var it = e.iterator();
@@ -181,6 +212,10 @@ public final class ContentManager {
 				st.executeBatch();
 			}
 		}
+	}
+	
+	public Connection getConnection() throws SQLException {
+		return db.getConnection();
 	}
 	
 	public record Article3(String urlname, String title) {
@@ -258,8 +293,6 @@ public final class ContentManager {
 						String title = readBlobUtf8(blob);
 						blob.free();
 						blob = result.getBlob("markdown");
-						//String markdown = readBlobUtf8(blob);
-						//blob.free();
 						var content = transform.apply(new InputStreamReader(blob.getBinaryStream(), StandardCharsets.UTF_8));
 						blob.free();
 						return Optional.of(new Article<>(title, content));
