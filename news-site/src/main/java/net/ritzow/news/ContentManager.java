@@ -106,6 +106,9 @@ public final class ContentManager {
 						(SELECT MAX(revision) + 1 FROM articles_content
 						WHERE articles_content.id = article_id
 						AND articles_content.locale = locale_id);
+					IF revision_id IS NULL THEN
+						SET revision_id = 0;
+					END IF;
 				END IF;
 				INSERT INTO articles_content (id, locale, title, markdown, revision)
 					VALUES (article_id, locale_id, title, markdown, revision_id);
