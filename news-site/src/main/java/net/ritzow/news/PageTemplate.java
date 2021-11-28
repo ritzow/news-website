@@ -83,7 +83,7 @@ public class PageTemplate {
 			meta().withName("robots").withContent("noindex"),
 			meta().withName("viewport")
 				.withContent("width=device-width,initial-scale=1"),
-			meta().withCharset("UTF-8"),
+			meta().withCharset("utf-8"),
 			meta().withName("referrer").withContent("no-referrer")
 		));
 	}

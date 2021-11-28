@@ -40,8 +40,8 @@ public class RunSite {
 		var content = resourceAsString("/content/Sandbox2D.md");
 		cm.newArticle("sandbox2d", Locale.forLanguageTag("en-US"), "Sandbox2D Readme", content);
 		cm.newArticle("sandbox2d", Locale.forLanguageTag("en-US"), "Sandbox2D Readme v2", content + "\n\nAND SOME EXTRA.");
-		//cm.newArticle("sandbox2d", Locale.forLanguageTag("es-US"), "Sandbox2D Readme v2 Spanish", content);
-		cm.newArticle("blahblah", Locale.forLanguageTag("es"), "Sandbox2D Readme Spanish", "***HELLO!!!***");
+		cm.newArticle("sandbox2d", Locale.forLanguageTag("es"), "Sandbox2D Readme v2 Spanish", content);
+		cm.newArticle("blahblah", Locale.forLanguageTag("es"), "blahblah! Español", "***HELLO!!!ñ***");
 		
 		SplittableRandom random = new SplittableRandom(0);
 		
@@ -71,14 +71,11 @@ public class RunSite {
 //		JmDNS mdns = JmDNS.create(InetAddress.getLocalHost(), "news.local");
 		
 		/* Shutdown on user input */
-		try(var reader = new InputStreamReader(System.in);
-		    var scan = new Scanner(reader)) {
+		try(var reader = new InputStreamReader(System.in)) {
 			SqlFile file = new SqlFile(reader, "<stdin>", System.out, "UTF-8", true, (URL)null);
-			while(true) {
-				try(var db = cm.getConnection()) {
-					file.setConnection(db);
-					file.execute();
-				}
+			try(var db = cm.getConnection()) {
+				file.setConnection(db);
+				file.execute();
 			}
 		} catch(IOException | SQLException e) {
 			e.printStackTrace();
@@ -134,7 +131,17 @@ public class RunSite {
 		request.getResponse().setContentType("text/html; charset=utf-8");
 		request.getResponse().setHeader(HttpHeader.CACHE_CONTROL, "no-store");
 		request.getResponse().setHeader(HttpHeader.REFERER, "no-referrer");
-		Writer body = request.getResponse().getWriter();
+		
+		/*HttpField te = request.getHttpFields().getField(HttpHeader.TE);
+		if(te != null && te.contains("trailers")) {
+			System.err.println("contains trailers");
+			request.getResponse().setHeader(HttpHeader.TRAILER, HttpHeader.ETAG.asString() + ", " + HttpHeader.EXPIRES);
+			request.getResponse().setTrailers(() -> HttpFields.build().addCSV(HttpHeader.ETAG, "bloop").add(HttpHeader.EXPIRES,
+				ZonedDateTime.now(ZoneId.of("GMT")).plusSeconds(10).format(DateTimeFormatter.RFC_1123_DATE_TIME)));
+		}*/
+//		var bout = new ByteArrayOutputStream();
+//		StringWriter body = new StringWriter();
+		Writer body = new OutputStreamWriter(request.getResponse().getHttpOutput(), StandardCharsets.UTF_8);
 		Object model = new HtmlSessionState(request, translations, result.named());
 		result.html().render(FlatHtml.into(body).appendUnescapedText("<!DOCTYPE html>"), model);
 		body.flush();
