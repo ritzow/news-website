@@ -254,6 +254,10 @@ public final class ContentManager {
 		}
 	}
 	
+	public List<Locale> getAvailableLocales() throws SQLException {
+		return getSupportedLocales().stream().map(entry -> Locale.forLanguageTag(entry.getValue())).toList();
+	}
+	
 	public List<Locale> getArticleLocales(String urlname) throws SQLException {
 		try(var db = this.db.getConnection()) {
 			try(var st = db.prepareCall("call get_article_langs(?)")) {
