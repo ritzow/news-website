@@ -32,6 +32,10 @@ public class PageTemplate {
 		return new RequestHandlerContent(handler);
 	}
 	
+	public static DomContent named(String name) {
+		return new RequestHandlerContent(state -> state.named(name));
+	}
+	
 	public static DomContent translated(String name) {
 		return new RequestHandlerContent(state ->
 			rawHtml(state.translator().forPrioritized(name, HttpUser.localesForUser(state.request()))));
