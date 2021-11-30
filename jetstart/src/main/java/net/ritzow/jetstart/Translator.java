@@ -20,7 +20,7 @@ public interface Translator<T> {
 				String key = (String)entry.getKey();
 				String translation = (String)entry.getValue();
 				int dotIndex = key.indexOf('.');
-				String name = key.substring(0, dotIndex);
+				String name = key.substring(0, dotIndex == -1 ? key.length() : dotIndex);
 				Locale locale = dotIndex == -1 ? Locale.ROOT : Locale.forLanguageTag(key.substring(dotIndex + 1));
 				translations.compute(name, (name_, langs) -> {
 					if(langs == null) {
