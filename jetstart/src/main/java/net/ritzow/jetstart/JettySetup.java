@@ -10,7 +10,7 @@ import java.security.KeyStore;
 import java.security.KeyStoreException;
 import java.security.NoSuchAlgorithmException;
 import java.security.cert.CertificateException;
-import java.util.Set;
+import java.util.EnumSet;
 import org.eclipse.jetty.alpn.server.ALPNServerConnectionFactory;
 import org.eclipse.jetty.http.CookieCompliance;
 import org.eclipse.jetty.http.HttpCompliance;
@@ -57,8 +57,6 @@ public class JettySetup {
 		}
 		server.setErrorHandler(onError);
 		/* TODO use directly instead of adding beans? */
-		server.addBean(new DefaultSessionCacheFactory());
-		server.addBean(new NullSessionDataStoreFactory());
 		GzipHandler gzipHandler = new GzipHandler();
 		gzipHandler.setHandler(setupSessionInfrastructure(server, handler));
 		SecuredRedirectHandler secureHandler = new SecuredRedirectHandler();
@@ -87,7 +85,7 @@ public class JettySetup {
 		handler.setHttpOnly(true);
 		handler.setSecureRequestOnly(true);
 		handler.setSameSite(SameSite.STRICT);
-		handler.setSessionTrackingModes(Set.of(SessionTrackingMode.COOKIE));
+		handler.setSessionTrackingModes(EnumSet.of(SessionTrackingMode.COOKIE));
 		handler.setHandler(inner);
 		return handler;
 	}
