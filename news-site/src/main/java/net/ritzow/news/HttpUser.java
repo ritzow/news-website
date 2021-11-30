@@ -1,5 +1,6 @@
 package net.ritzow.news;
 
+import jakarta.servlet.http.HttpSession;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -24,17 +25,37 @@ public class HttpUser {
 		if(session == null) {
 			return null;
 		}
-		return (SessionData)session.getAttribute("net.ritzow.sessiondata");
+		return (SessionData)session.getAttribute(sessionAttr);
 	}
+	
+	private static final String sessionAttr = "net.ritzow.sessiondata";
 	
 	public static SessionData session(Request request) {
-		return (SessionData)request.getSession().getAttribute("net.ritzow.sessiondata");
+		HttpSession s = request.getSession();
+		Object session = s.getAttribute(sessionAttr);
+		if(session == null) {
+			s.setAttribute(sessionAttr, session = new SessionData());
+		}
+		return (SessionData)session;
 	}
 	
-	public static Locale bestLocale(Request request, List<Locale> available) {
-		return localesForUser(request).stream()
-			//.map(range -> Locale.forLanguageTag(range.getRange()))
-			.filter(lang -> available.stream().map(Locale::getLanguage).anyMatch(lang.getLanguage()::equals))
-			.findFirst().orElse(available.get(0));
+	public static Locale bestLocale(Request request, Iterable<Locale> available) {
+		for(Locale userL : localesForUser(request)) {
+			for(Locale contentL : available) {
+				if(contentL.getLanguage().equals(userL.getLanguage())) {
+					for(Locale contentCountryL : available) {
+						if(contentCountryL.equals(userL)) {
+							return contentCountryL;
+						}
+					}
+					return contentL;
+				}
+			}
+		}
+		return available.iterator().next();
+//		return localesForUser(request).stream()
+//			.sorted(lang -> available.stream().map(Locale::getLanguage).anyMatch(lang.getLanguage()::equals))
+//			.filter(lang -> available.stream().map(Locale::getLanguage).anyMatch(lang.getLanguage()::equals))
+//			.findFirst().orElse(available.get(0));
 	}
 }
