@@ -10,27 +10,24 @@ import java.sql.*;
 import java.util.*;
 import java.util.Map.Entry;
 import java.util.function.Function;
-import java.util.stream.Collectors;
-import javax.sql.DataSource;
 
 import static java.util.Map.entry;
 
 public final class ContentManager {
-	private final DataSource db;
+	private final HikariDataSource db;
 	
 	public static ContentManager ofMemoryDatabase() throws SQLException {
+		return new ContentManager();
+	}
+	
+	private ContentManager() throws SQLException {
 		HikariDataSource pool = new HikariDataSource();
 		pool.setJdbcUrl("jdbc:hsqldb:mem:test");
 		//pool.setJdbcUrl("jdbc:h2:mem:");
 		pool.setDataSourceProperties(properties(
 			entry("user", "SA")
 		));
-		
-		return new ContentManager(pool);
-	}
-	
-	private ContentManager(DataSource db) throws SQLException {
-		this.db = db;
+		this.db = pool;
 		initNew();
 	}
 	
@@ -38,6 +35,7 @@ public final class ContentManager {
 		try(var db = this.db.getConnection()) {
 			db.prepareStatement("SHUTDOWN").execute();
 		}
+		this.db.close();
 	}
 	
 	@SafeVarargs
