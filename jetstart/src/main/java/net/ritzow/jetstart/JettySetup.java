@@ -23,9 +23,7 @@ import org.eclipse.jetty.server.handler.ErrorHandler;
 import org.eclipse.jetty.server.handler.RequestLogHandler;
 import org.eclipse.jetty.server.handler.SecuredRedirectHandler;
 import org.eclipse.jetty.server.handler.gzip.GzipHandler;
-import org.eclipse.jetty.server.session.DefaultSessionCacheFactory;
 import org.eclipse.jetty.server.session.DefaultSessionIdManager;
-import org.eclipse.jetty.server.session.NullSessionDataStoreFactory;
 import org.eclipse.jetty.server.session.SessionHandler;
 import org.eclipse.jetty.util.ssl.SslContextFactory;
 import org.eclipse.jetty.util.thread.QueuedThreadPool;
@@ -41,22 +39,14 @@ public class JettySetup {
 		pool.setName("pool");
 		Server server = new Server(pool);
 		setupConnectors(server, keyStore, keyStorePassword);
-		ErrorHandler onError = new ErrorHandler() {
+		var onError = new ErrorHandler() {
 			@Override
 			public void handle(String target, Request baseRequest,
 				HttpServletRequest request, HttpServletResponse response) throws IOException, ServletException {
 				errorHandler.handle(target, baseRequest, request, response);
 			}
 		};
-		if(DEBUG) {
-			onError.setShowStacks(true);
-		} else {
-			onError.setShowStacks(false);
-			onError.setShowMessageInTitle(false);
-			onError.setShowServlet(false);
-		}
 		server.setErrorHandler(onError);
-		/* TODO use directly instead of adding beans? */
 		GzipHandler gzipHandler = new GzipHandler();
 		gzipHandler.setHandler(setupSessionInfrastructure(server, handler));
 		SecuredRedirectHandler secureHandler = new SecuredRedirectHandler();

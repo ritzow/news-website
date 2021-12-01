@@ -1,6 +1,7 @@
 package net.ritzow.jetstart;
 
 import j2html.tags.DomContent;
+import java.util.HashMap;
 import java.util.Map;
 import org.eclipse.jetty.server.Request;
 
@@ -11,7 +12,7 @@ public class HtmlSessionState {
 	
 	public HtmlSessionState(Request request, Translator<String> translations, Map<String, DomContent> namedContent) {
 		this.request = request;
-		this.tags = namedContent;
+		this.tags = new HashMap<>(namedContent);
 		this.translator = translations;
 	}
 	
@@ -21,6 +22,13 @@ public class HtmlSessionState {
 			throw new IllegalArgumentException("No DOM contente available for name '" + tag + "'");
 		}
 		return content;
+	}
+	
+	public void insert(String name, DomContent content) {
+		var cur = tags.putIfAbsent(name, content);
+		if(cur != null) {
+			throw new IllegalArgumentException("'" + name + "' already associated with content: " + content);
+		}
 	}
 	
 	public Request request() {
