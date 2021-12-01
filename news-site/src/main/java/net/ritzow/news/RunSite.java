@@ -1,13 +1,12 @@
 package net.ritzow.news;
 
 import j2html.TagCreator;
-import j2html.rendering.FlatHtml;
 import j2html.tags.DomContent;
 import j2html.tags.specialized.HtmlTag;
-import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpServletResponse;
-import java.io.*;
-import java.net.URL;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.UncheckedIOException;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
@@ -17,20 +16,26 @@ import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.FormatStyle;
 import java.util.*;
-import java.util.function.Consumer;
+import java.util.concurrent.locks.Condition;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Supplier;
 import java.util.random.RandomGenerator;
 import java.util.random.RandomGeneratorFactory;
 import java.util.stream.Stream;
-import net.ritzow.jetstart.*;
+import net.ritzow.jetstart.HtmlResult;
+import net.ritzow.jetstart.JettySetup;
+import net.ritzow.jetstart.StaticPathHandler;
+import net.ritzow.jetstart.Translator;
 import net.ritzow.news.ContentManager.Article;
-import org.eclipse.jetty.http.*;
-import org.eclipse.jetty.server.Handler;
+import org.eclipse.jetty.http.HttpField;
+import org.eclipse.jetty.http.HttpHeader;
+import org.eclipse.jetty.http.HttpMethod;
+import org.eclipse.jetty.http.HttpStatus;
+import org.eclipse.jetty.server.HttpInput;
 import org.eclipse.jetty.server.MultiPartParser;
 import org.eclipse.jetty.server.Request;
-import org.eclipse.jetty.server.Response;
-import org.eclipse.jetty.server.handler.AbstractHandler;
-import org.hsqldb.cmdline.SqlFile;
+import org.eclipse.jetty.util.Callback;
 
 import static j2html.TagCreator.*;
 import static java.util.Map.entry;
@@ -42,8 +47,6 @@ public class RunSite {
 	private static ContentManager cm;
 	
 	public static void main(String[] args) throws Exception {
-		System.out.println(Runtime.version());
-		
 		cm = ContentManager.ofMemoryDatabase();
 		var content = resourceAsString("/content/Sandbox2D.md");
 		cm.newArticle("sandbox2d", Locale.forLanguageTag("en-US"), "Sandbox2D Readme", content);
@@ -72,34 +75,45 @@ public class RunSite {
 		//TODO use interactive elements https://developer.mozilla.org/en-US/docs/Web/HTML/Element#interactive_elements
 		//TODO use <details> for accordion items
 		
+		//TODO create Handler that handles language-switch POST requests and wrap newPath call
 		var server = JettySetup.newStandardServer(
 			Path.of(System.getProperty("net.ritzow.certs")), System.getProperty("net.ritzow.pass"),
 			newPath(
-				generatedHandler(RunSite::mainPageGenerator),
+				ResponseUtil.generatedHandler(RunSite::mainPageGenerator),
+				entry("/article", ResponseUtil.generatedHandler(RunSite::articlePageProcessor)),
+				entry("/upload", ResponseUtil.generatedHandler(RunSite::uploadGenerator)),
+				entry("/shutdown", ResponseUtil.generatedHandler(RunSite::shutdownPage)),
 				entry("/opensearch", new StaticContentHandler(open("/xml/opensearch.xml"), "application/opensearchdescription+xml")),
 				entry("/style.css", new StaticContentHandler(open("/css/global.css"), "text/css")),
-				entry("/article", generatedHandler(RunSite::articlePageProcessor)),
 				entry("/icon.svg", new StaticContentHandler(open("/image/icon.svg"), "image/svg+xml"))
 			),
-			generatedHandler(RunSite::errorGenerator)
+			ResponseUtil.generatedHandler(RunSite::errorGenerator)
 		);
 		
 		server.start();
 		
 //		JmDNS mdns = JmDNS.create(InetAddress.getLocalHost(), "news.local");
 		
+		//TODO create a webpage to submit sql commands
 		/* Shutdown on user input */
-		try(var reader = new InputStreamReader(System.in, StandardCharsets.UTF_8)) {
-			try(var db = cm.getConnection()) {
-				/* TODO set interactive to false and create a loop, create a StringReader after creating a query string */
-				SqlFile file = new SqlFile(reader, "<stdin>", System.out, "UTF-8", true, (URL)null);
-				file.setConnection(db);
-				file.execute();
-			}
-		} catch(IOException | SQLException e) {
-			e.printStackTrace();
+//		try(var reader = new InputStreamReader(System.in, StandardCharsets.UTF_8)) {
+//			try(var db = cm.getConnection()) {
+//				/* TODO set interactive to false and create a loop, create a StringReader after creating a query string */
+//				SqlFile file = new SqlFile(reader, "<stdin>", System.out, "UTF-8", true, (URL)null);
+//				file.setConnection(db);
+//				file.execute();
+//			}
+//		} catch(IOException | SQLException e) {
+//			e.printStackTrace();
+//		}
+		
+		try {
+			shutdownLock.lock();
+			shutdownCond.awaitUninterruptibly();
+		} finally {
+			shutdownLock.unlock();
 		}
-
+		
 //		mdns.close();
 		server.stop();
 		cm.shutdown();
@@ -118,67 +132,71 @@ public class RunSite {
 	
 	//TODO html tag itself needs to have lang
 	//TODO need a readable way of nesting named elements
-	private static final HtmlTag PAGE_OUTLINE = fullPage("RedNet",
-		named("full-content"),
-		div().withClass("page-separator"),
-		footer().withClasses("page-footer", "footer", "foreground").with(
-			span(
-				text("Server Time: "),
-				dynamic(state -> time(rawHtml(ZonedDateTime.now().format(
-					DateTimeFormatter.ofLocalizedDateTime(FormatStyle.LONG).withLocale(Locale.ROOT))))),
-				text(" Heap: "),
-				dynamic(state -> text(NumberFormat.getIntegerInstance(HttpUser.localesForUser(state.request()).get(0))
-					.format((Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory())/1000) + " KB"))
-			)
-		)
-	);
-	
-	private static DomContent content(Locale lang) {
-		return div().withLang(lang.toLanguageTag()).withClass("page-body").with(
-			nav().withClasses("header", "foreground").with(named("header-content")),
-			mainBox(
-				named("content")
+
+	private static HtmlTag page(String title, Locale locale) {
+		return html().withLang(locale.toLanguageTag()).with(
+			baseHead(title),
+			body().with(
+				named("full-content"),
+				div().withClass("page-separator"),
+				footer().withClasses("page-footer", "footer", "foreground").with(
+					span(
+						text("Server Time: "),
+						dynamic(state -> time(rawHtml(ZonedDateTime.now().format(
+							DateTimeFormatter.ofLocalizedDateTime(FormatStyle.LONG).withLocale(Locale.ROOT))))),
+						text(" Heap: "),
+						dynamic(state -> text(NumberFormat.getIntegerInstance(HttpUser.localesForUser(state.request()).get(0))
+							.format((Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory()) / 1000) + " KB"))
+					)
+				)
 			)
 		);
 	}
 	
-	private static final Translator<String> TRANSLATIONS =
-		Translator.ofProperties(properties("/lang/welcome.properties"));
+	private static final Lock shutdownLock = new ReentrantLock();
+	private static final Condition shutdownCond = shutdownLock.newCondition();
 	
-	private static void doGetHtmlStreamed(Request request, HtmlResult result, Translator<String> translations) {
-		try {
-			setBasicStreamingHeaders(request.getResponse(), result.status(), "text/html; charset=utf-8");
-			Writer body = new OutputStreamWriter(request.getResponse().getHttpOutput(), StandardCharsets.UTF_8);
-			Object model = new HtmlSessionState(request, translations, result.named());
-			result.html().render(FlatHtml.into(body).appendUnescapedText("<!DOCTYPE html>"), model);
-			body.flush();
-			request.setHandled(true);
-		} catch(IOException e) {
-			throw new UncheckedIOException(e);
-		}
-	}
-	
-	private static void doError(Request request, int status, String contentType) {
-		setBasicStreamingHeaders(request.getResponse(), status, contentType);
-	}
-	
-	private static void setBasicStreamingHeaders(Response response, int status, String contentType) {
-		response.setStatus(status);
-		response.setHeader(HttpHeader.TRANSFER_ENCODING, "chunked");
-		response.setContentType(contentType);
-		response.setHeader(HttpHeader.CACHE_CONTROL, "no-store");
-		response.setHeader(HttpHeader.REFERER, "no-referrer");
-	}
-	
-	private static Handler generatedHandler(Consumer<Request> function) {
-		return new AbstractHandler() {
+	private static void shutdownPage(Request request) {
+		
+		ResponseUtil.doGetHtmlStreamed(request,
+			html().with(
+				body().with(
+					p("Shutting down...")
+				)
+			)
+		);
+		
+		request.getResponse().getHttpOutput().complete(new Callback() {
 			@Override
-			public void handle(String target, Request baseRequest,
-					HttpServletRequest request, HttpServletResponse response) {
-				function.accept(baseRequest);
+			public void succeeded() {
+				try {
+					shutdownLock.lock();
+					shutdownCond.signalAll();
+				} finally {
+					shutdownLock.unlock();
+				}
 			}
-		};
+			
+			@Override
+			public void failed(Throwable x) {
+				x.printStackTrace();
+			}
+		});
 	}
+	
+	private static final DomContent CONTENT_HTML = div().withClass("page-body").with(
+		nav().withClasses("header", "foreground").with(named("header-content")),
+		mainBox(
+			named("content")
+		)
+	);
+	
+	private static DomContent content() {
+		return CONTENT_HTML;
+	}
+	
+	static final Translator<String> TRANSLATIONS =
+		Translator.ofProperties(properties("/lang/welcome.properties"));
 	
 	private static DomContent header(Request request) throws SQLException {
 		List<Locale> locales = cm.getAvailableLocales();
@@ -198,13 +216,11 @@ public class RunSite {
 						
 						var button = button()
 							.withType("submit")
-							.withName(locale.toLanguageTag());
+							.withName(locale.toLanguageTag())
+							.withClass("lang-button");
 						
 						if(locale.equals(bestCurrent)) {
 							button.withCondDisabled(true);
-							button.withClasses("current-locale", "header-content");
-						} else {
-							button.withClasses("header-content");
 						}
 						
 						return button.withText(text);
@@ -222,33 +238,50 @@ public class RunSite {
 		HttpField.getValueParameters(contentTypeStr, map);
 		String boundary = map.get("boundary");
 		
-		var handler = new MultiPartParser.Handler() {
-			@Override
-			public void parsedField(String name, String value) {
-				if(name.equalsIgnoreCase("Content-Disposition")) {
-					var map = new HashMap<String, String>(1);
-					HttpField.getValueParameters(value, map);
-					/* TODO validate "name" field to make sure it is proper locale */
-					HttpUser.session(request).locale(Locale.forLanguageTag(map.get("name")));
-				}
-			}
-			
-			@Override
-			public boolean content(ByteBuffer item, boolean last) {
-				//System.out.println("\"" + StandardCharsets.UTF_8.decode(item) + "\"");
-				return false;
-			}
-			
-			@Override
-			public void earlyEOF() {
-				throw new RuntimeException("early EOF");
-			}
-		};
-		
 		try {
 			//TODO instead of readAllBytes, read as much as possible at a time and parse progressively.
-			new MultiPartParser(handler, boundary)
-				.parse(ByteBuffer.wrap(request.getHttpInput().readAllBytes()), true);
+			var parser = new MultiPartParser(new MultiPartParser.Handler() {
+				@Override
+				public void parsedField(String name, String value) {
+					if(name.equalsIgnoreCase("Content-Disposition")) {
+						var map = new HashMap<String, String>(1);
+						HttpField.getValueParameters(value, map);
+						/* TODO validate "name" field to make sure it is proper locale */
+						HttpUser.session(request).locale(Locale.forLanguageTag(map.get("name")));
+					}
+				}
+				
+				@Override
+				public boolean content(ByteBuffer item, boolean last) {
+					//System.out.println("\"" + StandardCharsets.UTF_8.decode(item) + "\"");
+					return false;
+				}
+				
+				@Override
+				public void earlyEOF() {
+					throw new RuntimeException("early EOF");
+				}
+			}, boundary);
+			HttpInput in = request.getHttpInput();
+			parser.parse(ByteBuffer.wrap(in.readAllBytes()), true);
+			
+			//TODO read in chunks so parsing can happen while receiving packets.
+//			boolean finished = in.isFinished();
+////			ByteBuffer buffer = null;
+////			while(!finished) {
+////				request.getHttpInput()
+////				int available = in.available();
+////				if(buffer == null || available > buffer.capacity()) {
+////					buffer = ByteBuffer.wrap(new byte[available]);
+////				} else if(buffer) {
+////
+////				} else {
+////					buffer = ByteBuffer.wrap(new byte[2048]);
+////				}
+////				buffer = (buffer == null || available > buffer.length) ? new byte[available] : new byte[2048];
+////				int count = in.read(buffer);
+////				parser.parse(buffer, finished = in.isFinished());
+////			}
 		} catch(IOException e) {
 			throw new UncheckedIOException(e);
 		}
@@ -264,103 +297,155 @@ public class RunSite {
 			return;
 		}
 		
-		Optional<String> next = StaticPathHandler.peekComponent(request);
-		if(next.isEmpty()) {
-			try {
-				Locale bestLocale = HttpUser.bestLocale(request, cm.getAvailableLocales());
-				doGetHtmlStreamed(request, new HtmlResult(PAGE_OUTLINE, Map.of(
-					"full-content", content(bestLocale),
-					"header-content", header(request),
-					"content", div().withClass("article-list").with(
-						Stream.concat(
-							Stream.of(
-								h1(translated("greeting")).withClass("title")
-							),
-							cm.getArticlesForLocale(bestLocale).stream().map(
-								article3 -> articleBox(article3.title(), "/article/" + article3.urlname())
-							)
-						).toArray(DomContent[]::new)
-					)
-				)), TRANSLATIONS);
-			} catch(SQLException | IOException e) {
-				throw new RuntimeException(e);
-			}
-		} else {
-			var html = fullPage("Error",
-				mainBox(
-					p("\"" + next.get() + "\" does not exist."),
-					a("Go home").withHref("/")
+		if(StaticPathHandler.peekComponent(request).isPresent()) {
+			doGeneric404(request);
+			return;
+		}
+		
+		try {
+			Locale bestLocale = HttpUser.bestLocale(request, cm.getAvailableLocales());
+			ResponseUtil.doGetHtmlStreamed(request, new HtmlResult(page("RedNet", bestLocale), Map.of(
+				"full-content", content(),
+				"header-content", header(request),
+				"content", div().withClass("article-list").with(
+					Stream.concat(
+						Stream.of(
+							h1(translated("greeting")).withClass("title")
+						),
+						cm.getArticlesForLocale(bestLocale).stream().map(
+							article3 -> articleBox(article3.title(), "/article/" + article3.urlname())
+						)
+					).toArray(DomContent[]::new)
 				)
-			);
-			doGetHtmlStreamed(request, new HtmlResult(html, Map.of(), HttpStatus.NOT_FOUND_404), TRANSLATIONS);
+			)), TRANSLATIONS);
+		} catch(SQLException | IOException e) {
+			throw new RuntimeException(e);
 		}
 	}
 	
-	private static void articlePageProcessor(Request request) {
+	private static void uploadGenerator(Request request) throws SQLException {
+		if(HttpMethod.fromString(request.getMethod()) == HttpMethod.POST) {
+			throw new RuntimeException("Not implemented");
+		}
+		
+		if(StaticPathHandler.peekComponent(request).isPresent()) {
+			doGeneric404(request);
+			return;
+		}
+		
+		Locale locale = HttpUser.bestLocale(request, cm.getAvailableLocales());
+		
+		ResponseUtil.doGetHtmlStreamed(request, page("RedNet", locale),
+			entry("full-content",
+				content()
+			),
+			entry("header-content",
+				header(request)
+			),
+			entry("content",
+				mainForm()
+			)
+		);
+	}
+	
+	private static void articlePageProcessor(Request request) throws SQLException, IOException {
 		if(HttpMethod.fromString(request.getMethod()) == HttpMethod.POST) {
 			doPostLang(request);
 			return;
 		}
 		
 		Optional<String> name = StaticPathHandler.peekComponent(request);
-		if(name.isPresent()) {
+		Locale mainLocale = HttpUser.bestLocale(request, cm.getAvailableLocales());
+		
+		//TODO make sure there isn't an extra component in the path
+		
+		if(name.isEmpty()) {
+			var html = page("Error", mainLocale);
+			ResponseUtil.doGetHtmlStreamed(request, new HtmlResult(html,  Map.ofEntries(
+				entry("full-content",
+					mainBox(
+						p("Please specify an article URL component: ").with(
+							span(request.getHttpURI().toURI().normalize() + "<article-path>")
+						),
+						a("Go home").withHref("/")
+					)
+				)
+			), HttpStatus.NOT_FOUND_404), TRANSLATIONS);
+			return;
+		}
+		
+		String urlname = name.get();
+		List<Locale> supported = cm.getArticleLocales(urlname);
+		
+		if(supported.isEmpty()) {
+			ResponseUtil.doGetHtmlStreamed(request, page("Error", mainLocale),
+				entry("full-content", content()),
+				entry("header-content", header(request)),
+				entry("content",
+					p("No such article " + urlname)
+				)
+			);
+			return;
+		}
+		
+		Locale lang = HttpUser.bestLocale(request, supported);
+		Optional<Article<MarkdownContent>> article = cm.getLatestArticle(urlname, lang, reader -> {
 			try {
-				String urlname = name.get();
-				List<Locale> supported = cm.getArticleLocales(urlname);
-				Locale mainLocale = HttpUser.bestLocale(request, cm.getAvailableLocales());
-				DomContent content;
-				if(supported.isEmpty()) {
-					content = p("No such article " + urlname);
-				} else {
-					Locale lang = HttpUser.bestLocale(request, supported);
-					Optional<Article<MarkdownContent>> article = cm.getLatestArticle(urlname, lang, reader -> {
-						try {
-							return new MarkdownContent(reader);
-						} catch(IOException e) {
-							throw new UncheckedIOException(e);
-						}
-					});
-					if(article.isPresent()) {
-						content = TagCreator.main().withLang(lang.toLanguageTag()).with(
-							article(
-								h1(article.get().title()).withClass("title-article"),
-								div().withClass("markdown").with(article.get().content())
-							)
-						);
-					} else {
-						content = p("No such article " + urlname);
-					}
-				}
-				doGetHtmlStreamed(request, new HtmlResult(PAGE_OUTLINE, Map.of(
-					"full-content", content(mainLocale),
-					"header-content", header(request),
-					"content", content
-				)), TRANSLATIONS);
-			} catch(SQLException | IOException e) {
-				throw new RuntimeException(e);
+				return new MarkdownContent(reader);
+			} catch(IOException e) {
+				throw new UncheckedIOException(e);
 			}
-		} else {
-			var html = fullPage("Error",
+		});
+		
+		if(article.isEmpty()) {
+			ResponseUtil.doGetHtmlStreamed(request, page("Error", mainLocale),
+				entry("full-content", content()),
+				entry("header-content", header(request)),
+				entry("content",
+					p("No such article " + urlname)
+				)
+			);
+			return;
+		}
+		
+		ResponseUtil.doGetHtmlStreamed(request, page(article.get().title(), mainLocale),
+			entry("full-content", content()),
+			entry("header-content", header(request)),
+			entry("content", TagCreator.main().withLang(lang.toLanguageTag()).with(
+				article(
+					h1(article.get().title()).withClass("title-article"),
+					div().withClass("markdown").with(article.get().content())
+				)
+			))
+		);
+	}
+	
+	//TODO standardize error page
+	private static void doGeneric404(Request request) {
+		var html = page("Error", Locale.forLanguageTag("en-US"));
+		ResponseUtil.doGetHtmlStreamed(request, new HtmlResult(html,  Map.ofEntries(
+			entry("full-content",
 				mainBox(
-					p("Please specify an article URL component: ").with(
-						span(request.getHttpURI().toURI().normalize() + "<article-path>")
+					p().with(
+						span("\"" + request.getHttpURI() + "\" does not exist.")
 					),
 					a("Go home").withHref("/")
 				)
-			);
-			doGetHtmlStreamed(request, new HtmlResult(html,  Map.of(), HttpStatus.NOT_FOUND_404), TRANSLATIONS);
-		}
+			)
+		), HttpStatus.NOT_FOUND_404), TRANSLATIONS);
 	}
 	
 	private static void errorGenerator(Request request) {
-		var html = fullPage("Error",
-			mainBox(
-				p("Sorry, there was an unexpected error!"),
-				a("Go home").withHref("/")
-			)
-		);
+		var html = page("Error", Locale.forLanguageTag("en-US"));
 		
-		doGetHtmlStreamed(request, new HtmlResult(html, Map.of(), HttpStatus.INTERNAL_SERVER_ERROR_500), TRANSLATIONS);
+		ResponseUtil.doGetHtmlStreamed(request, new HtmlResult(html, Map.ofEntries(
+			entry("full-content",
+				mainBox(
+					p("Sorry, there was an unexpected error!"),
+					a("Go home").withHref("/")
+				)
+			)
+		), HttpStatus.INTERNAL_SERVER_ERROR_500), TRANSLATIONS);
 	}
 	
 	private static Properties properties(String path) {
