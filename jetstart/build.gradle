@@ -8,12 +8,12 @@ repositories {
 
 dependencies {
 	implementation 'org.eclipse.jetty:jetty-server:11.0.7'
-	implementation 'org.eclipse.jetty:jetty-servlet:11.0.7'
-	implementation 'org.slf4j:slf4j-simple:2.0.0-alpha5'
 	implementation 'org.eclipse.jetty.http2:http2-server:11.0.7'
 	implementation 'org.eclipse.jetty:jetty-alpn-java-server:11.0.7'
 	implementation 'com.j2html:j2html:1.5.0'
 	//implementation org.glassfish.grizzly:grizzly-http-server:2.4.4
+
+	runtimeOnly 'org.slf4j:slf4j-simple:2.0.0-alpha5'
 }
 
 compileJava {

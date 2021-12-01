@@ -3,6 +3,7 @@ plugins {
 	id 'application'
 	id "com.github.ben-manes.versions" version "0.39.0"
 	id 'org.kordamp.gradle.jdeps' version '0.15.0'
+	id 'net.ritzow.news.build'
 	//id "com.eriwen.gradle.css" version "2.14.0"
 	//id "com.eriwen.gradle.js" version "2.14.1"
 }
@@ -13,13 +14,14 @@ repositories {
 
 dependencies {
 	implementation project(':jetstart')
-	implementation 'com.j2html:j2html:1.5.0'
 	implementation 'org.eclipse.jetty:jetty-server:11.0.7'
-	implementation 'org.hsqldb:hsqldb:2.6.1'
-	implementation 'org.hsqldb:sqltool:2.6.1'
+	implementation 'com.j2html:j2html:1.5.0'
 	implementation 'org.commonmark:commonmark:0.18.0'
 	implementation 'com.zaxxer:HikariCP:5.0.0'
+	implementation 'org.hsqldb:sqltool:2.6.1'
 	//implementation 'com.h2database:h2:2.0.202'
+
+	runtimeOnly 'org.hsqldb:hsqldb:2.6.1'
 }
 
 compileJava {
@@ -27,6 +29,7 @@ compileJava {
 }
 
 import java.nio.file.Files
+import java.nio.file.Path
 
 def properties = new Properties()
 
@@ -36,8 +39,14 @@ try(def file = Files.newBufferedReader(projectDir.toPath().resolve('project.prop
 
 processResources {
 	from('src/main') {
-		include 'image/**', 'xml/**', 'lang/**', 'content/**'
+		include 'xml/**', 'lang/**', 'content/**'
 	}
+}
+
+def static isOutOfDate(Path inputPath, Path outputPath) {
+	return Files.notExists(outputPath) ||
+			Files.getLastModifiedTime(inputPath).toInstant()
+				.isAfter(Files.getLastModifiedTime(outputPath).toInstant())
 }
 
 jar {
@@ -46,17 +55,26 @@ jar {
 	def outputDir = sourceSets.main.output.resourcesDir.toPath()
 
 	doFirst {
-		//TODO this isn't working properly to include in jar use jar task instead??
 		def inputCss = project.projectDir.toPath().resolve('src/main/css/global.scss')
 		def outputCss = outputDir.resolve('css/global.css')
 		mkdir outputDir
-		if(Files.notExists(outputCss) ||
-				Files.getLastModifiedTime(inputCss).toInstant()
-						.isAfter(Files.getLastModifiedTime(outputCss).toInstant())) {
+		if(isOutOfDate(inputCss, outputCss)) {
 			exec {
 				executable properties.getProperty("sass.path")
 				args '--no-source-map', inputCss, outputCss
 				standardInput = System.in
+				standardOutput = System.out
+				errorOutput = System.err
+			}.assertNormalExitValue()
+		}
+
+		def inputIcon = project.projectDir.toPath().resolve("src/main/image/icon.svg")
+		def outputIcon = outputDir.resolve("image/icon.svg")
+
+		if(isOutOfDate(inputIcon, outputIcon)) {
+			exec { /* TODO use scour to optimize svg files */
+				executable properties.getProperty("inkscape.path")
+				args '--export-filename=' + outputIcon, '--export-type=svg', '--export-plain-svg', inputIcon.toString()
 				standardOutput = System.out
 				errorOutput = System.err
 			}.assertNormalExitValue()
