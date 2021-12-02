@@ -13,6 +13,7 @@ import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.FormatStyle;
 import java.util.*;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
@@ -44,6 +45,9 @@ public class RunSite {
 	
 	private static ContentManager CONTENT_MANAGER;
 	
+	static final Translator<String> TRANSLATIONS =
+		Translator.ofProperties(properties("/lang/welcome.properties"));
+	
 	public static void main(String[] args) throws Exception {
 		CONTENT_MANAGER = ContentManager.ofMemoryDatabase();
 		var content = resourceAsString("/content/Sandbox2D.md");
@@ -59,6 +63,7 @@ public class RunSite {
 		//TODO look into using noscript if ever using javascript
 		//TODO use interactive elements https://developer.mozilla.org/en-US/docs/Web/HTML/Element#interactive_elements
 		//TODO use <details> for accordion items
+		//TODO could use <button> with form submission for the home button to prevent link dragging? not very idiomatic
 		
 		//TODO create Handler that handles language-switch POST requests and wrap newPath call
 		var server = JettySetup.newStandardServer(
@@ -77,17 +82,14 @@ public class RunSite {
 		
 		server.start();
 		
-		try {
-			shutdownLock.lock();
-			shutdownCond.awaitUninterruptibly();
-		} finally {
-			shutdownLock.unlock();
-		}
+		lock.await();
 		
 		server.stop();
 		CONTENT_MANAGER.shutdown();
 		server.join();
 	}
+	
+	private static final CountDownLatch lock = new CountDownLatch(1);
 	
 	private static void processSql() {
 		//TODO create a webpage to submit sql commands
@@ -106,13 +108,16 @@ public class RunSite {
 	private static HtmlTag page(String title, Locale locale) {
 		return html().withLang(locale.toLanguageTag()).with(
 			baseHead(title),
-			body().with(
+			body().withId("top").with(
 				named("full-content"),
 				div().withClass("page-separator"),
-				footer().withClasses("page-footer", "footer", "foreground").with(
-					span(
+				footer().withClasses("page-footer").with(
+					a().withClasses("left-footer", "foreground").withHref("/shutdown").with(
+						rawHtml("Shutdown")
+					),
+					span().withClasses("right-footer", "foreground").with(
 						text("Server Time: "),
-						time(rawHtml(serverTime())),
+						time(rawHtml(serverTime(locale))),
 						text(" Heap: "),
 						dynamic(state -> {
 							long kbUsed = (Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory()) / 1000;
@@ -125,9 +130,9 @@ public class RunSite {
 		);
 	}
 	
-	private static String serverTime() {
+	private static String serverTime(Locale locale) {
 		return ZonedDateTime.now().format(
-			DateTimeFormatter.ofLocalizedDateTime(FormatStyle.LONG).withLocale(Locale.ROOT));
+			DateTimeFormatter.ofLocalizedDateTime(FormatStyle.LONG).withLocale(locale));
 	}
 	
 	public static Locale pageLocale(Request request) throws SQLException {
@@ -147,12 +152,7 @@ public class RunSite {
 		request.getResponse().getHttpOutput().complete(new Callback() {
 			@Override
 			public void succeeded() {
-				try {
-					shutdownLock.lock();
-					shutdownCond.signalAll();
-				} finally {
-					shutdownLock.unlock();
-				}
+				lock.countDown();
 			}
 			
 			@Override
@@ -162,19 +162,12 @@ public class RunSite {
 		});
 	}
 	
-	private static final DomContent CONTENT_HTML = div().withClass("page-body").with(
+	private static final DomContent CONTENT_HTML = each(
 		nav().withClasses("header", "foreground").with(named("header-content")),
 		mainBox(
 			named("content")
 		)
 	);
-	
-	private static DomContent content() {
-		return CONTENT_HTML;
-	}
-	
-	static final Translator<String> TRANSLATIONS =
-		Translator.ofProperties(properties("/lang/welcome.properties"));
 	
 	private static DomContent header(Request request) throws SQLException {
 		List<Locale> locales = CONTENT_MANAGER.getSupportedLocales();
@@ -189,19 +182,20 @@ public class RunSite {
 				.withEnctype("multipart/form-data").with(
 				each(
 					locales.stream().map(locale -> {
-						String text = locale.getDisplayName(locale) + (locale.equals(bestCurrent)
-							? "" : " (" + locale.getDisplayLanguage(bestCurrent) + ")");
-						
 						var button = button()
 							.withType("submit")
 							.withName(locale.toLanguageTag())
-							.withClass("lang-button");
+							.withClass("lang-button").with(
+								span(locale.getDisplayLanguage(locale))
+							);
 						
 						if(locale.equals(bestCurrent)) {
 							button.withCondDisabled(true);
+							/*.with(
+								span(locale.getDisplayCountry(locale))
+							);*/
 						}
-						
-						return button.withText(text);
+						return button;
 					})
 				)
 			)
@@ -265,7 +259,7 @@ public class RunSite {
 		}
 		
 		request.getResponse().setHeader(HttpHeader.LOCATION, request.getHttpURI().getDecodedPath());
-		request.getResponse().setStatus(/*HttpStatus.OK_200*/HttpStatus.SEE_OTHER_303);
+		request.getResponse().setStatus(HttpStatus.SEE_OTHER_303);
 		request.setHandled(true);
 	}
 	
@@ -283,7 +277,7 @@ public class RunSite {
 		try {
 			Locale bestLocale = HttpUser.bestLocale(request, CONTENT_MANAGER.getSupportedLocales());
 			ResponseUtil.doGetHtmlStreamed(request, new HtmlResult(page("RedNet", bestLocale), Map.of(
-				"full-content", content(),
+				"full-content", CONTENT_HTML,
 				"header-content", header(request),
 				"content", div().withClass("article-list").with(
 					Stream.concat(
@@ -315,7 +309,7 @@ public class RunSite {
 		
 		ResponseUtil.doGetHtmlStreamed(request, page("RedNet", locale),
 			entry("full-content",
-				content()
+				CONTENT_HTML
 			),
 			entry("header-content",
 				header(request)
@@ -357,7 +351,7 @@ public class RunSite {
 		
 		if(supported.isEmpty()) {
 			ResponseUtil.doGetHtmlStreamed(request, page("Error", mainLocale),
-				entry("full-content", content()),
+				entry("full-content", CONTENT_HTML),
 				entry("header-content", header(request)),
 				entry("content",
 					p("No such article " + urlname)
@@ -377,7 +371,7 @@ public class RunSite {
 		
 		if(article.isEmpty()) {
 			ResponseUtil.doGetHtmlStreamed(request, page("Error", mainLocale),
-				entry("full-content", content()),
+				entry("full-content", CONTENT_HTML),
 				entry("header-content", header(request)),
 				entry("content",
 					p("No such article " + urlname)
@@ -387,11 +381,12 @@ public class RunSite {
 		}
 		
 		ResponseUtil.doGetHtmlStreamed(request, page(article.get().title(), mainLocale),
-			entry("full-content", content()),
+			entry("full-content", CONTENT_HTML),
 			entry("header-content", header(request)),
 			entry("content", TagCreator.main().withLang(lang.toLanguageTag()).with(
 				article(
 					h1(article.get().title()).withClass("title-article"),
+					lang.equals(mainLocale) ? null : h3(lang.getDisplayName(mainLocale)).withClass("article-lang"),
 					div().withClass("markdown").with(article.get().content())
 				)
 			))

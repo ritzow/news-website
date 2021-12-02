@@ -1,29 +1,33 @@
+@charset "utf-8";
+
 /* https://stackoverflow.com/questions/90178/make-a-div-fill-the-height-of-the-remaining-screen-space */
 
 /* entire webpage */
 
 :root {
+	/* Background and content box foreground colors */
 	--bg: rgb(248, 248, 255);
 	--fg: rgb(255, 255, 255);
-
+	/* Rounded edge radius */
 	--radius: 25px;
+	/* Whitespace between and inside most elements */
 	--pad: 10px;
-
 	--logo-hover: drop-shadow(0 0 8px rgba(255, 0, 0, 0.5));
 	--shadow: drop-shadow(0 0 8px rgba(0, 0, 0, 0.5));
-
 	--display-font: system-ui;
+	--unselected-text-color: rgb(163, 163, 163);
 
 	font-family: var(--display-font);
 
 	/* html element must be sized https://stackoverflow.com/a/7049918/2442171 */
 	height: 100%;
 
-	scrollbar-color: rgb(73, 73, 73) var(--bg);
+	//scrollbar-color: rgb(73, 73, 73) var(--bg);
 
 	/* Remove default margin around content */
 	margin: 0;
 
+	/* When jumping to anchors, scroll smoothly */
 	scroll-behavior: smooth;
 }
 
@@ -36,10 +40,6 @@
 }
 
 /* Keep the footer at the bottom of the page */
-
-:root > body > .page-body {
-	flex: 0 1 auto;
-}
 
 :root > body > .page-separator {
 	flex: 1 1 auto;
@@ -57,10 +57,11 @@
 	filter: var(--shadow);
 }
 
-//.foreground *::selection {
-//	background-color: var(--bg);
-//	text-decoration: underline;
-//}
+/*.foreground ::selection {
+	background-color: var(--bg);
+	text-decoration: underline;
+	text-decoration-thickness: 3px;
+}*/
 
 .header {
 	border-bottom-left-radius: var(--radius);
@@ -70,6 +71,7 @@
 	margin-left: 5%;
 	margin-right: auto;
 	user-select: none;
+	flex: 0 1 auto;
 }
 
 .logo {
@@ -90,27 +92,25 @@
 }
 
 .lang-button {
-	border: none;
 	font: inherit;
 	color: inherit;
-	padding: 5px;
-	background-color: transparent;
+	padding: var(--pad);
+	background-color: var(--fg);
 	white-space: nowrap;
-	margin-left: 10px;
+	margin-left: var(--pad);
 	display: inline;
-	font-size: 110%;
 	border-radius: var(--radius);
-	border-color: black;
-	border-style: solid;
-	border-width: 2px;
+	border-style: none;
 }
 
 .lang-button:disabled {
-	filter: opacity(30%);
+	color: var(--unselected-text-color);
+	text-decoration: underline;
 }
 
 .lang-button:enabled:hover {
 	background-color: var(--bg);
+	filter: var(--shadow);
 }
 
 .logo:hover {
@@ -136,6 +136,7 @@
 	margin-left: auto;
 	margin-right: auto;
 	max-width: 500px;
+	flex: 0 1 auto;
 }
 
 .article-box {
@@ -159,11 +160,28 @@
 	}
 }
 
-.footer {
-	padding-right: 10px;
-	padding-bottom: 10px;
-	margin-left: auto;
-	margin-right: 0;
+.jump-top {
+	position: sticky;
+	bottom: var(--pad);
+	margin: var(--pad);
+	border-radius: var(--radius);
+	font-family: var(--display-font);
+	text-decoration: none;
+	color: black;
+	flex: 0 1 auto;
+}
+
+.left-footer {
+	padding-left: var(--pad);
+	padding-bottom: var(--pad);
+	float: left;
+	border-top-right-radius: var(--radius);
+}
+
+.right-footer {
+	padding-right: var(--pad);
+	padding-bottom: var(--pad);
+	float: right;
 	border-top-left-radius: var(--radius);
 }
 
@@ -174,6 +192,13 @@
 .title-article {
 	text-align: center;
 	text-decoration: underline;
+}
+
+.article-lang {
+	font-size: medium;
+	color: var(--unselected-text-color);
+	text-align: center;
+	font-weight: normal;
 }
 
 .form-element {

@@ -41,7 +41,12 @@ public class PageTemplate {
 	}
 	
 	public static DomContent mainBox(DomContent... content) {
-		return div().withClasses("main-box", "foreground").with(content);
+		return div().withClasses("main-box", "foreground")
+			.with(content).with(
+			a().withClasses("jump-top", "foreground").withHref("#top").with(
+				rawHtml("Return to top")
+			)
+		);
 	}
 	
 	public static DomContent articleBox(String title, String url) {
