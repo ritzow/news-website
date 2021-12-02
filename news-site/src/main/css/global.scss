@@ -23,9 +23,11 @@
 
 	/* Remove default margin around content */
 	margin: 0;
+
+	scroll-behavior: smooth;
 }
 
-.page {
+:root > body {
 	display: flex;
 	flex-flow: column;
 	height: 100%;
@@ -35,16 +37,16 @@
 
 /* Keep the footer at the bottom of the page */
 
-.page > .page-body {
+:root > body > .page-body {
 	flex: 0 1 auto;
 }
 
-.page > .page-separator {
+:root > body > .page-separator {
 	flex: 1 1 auto;
 	min-height: 10px;
 }
 
-.page > .page-footer {
+:root > body > .page-footer {
 	flex: 0 1 auto;
 }
 
@@ -87,10 +89,28 @@
 	display: inline;
 }
 
-.header-content {
+.lang-button {
+	border: none;
+	font: inherit;
+	color: inherit;
+	padding: 5px;
+	background-color: transparent;
 	white-space: nowrap;
 	margin-left: 10px;
 	display: inline;
+	font-size: 110%;
+	border-radius: var(--radius);
+	border-color: black;
+	border-style: solid;
+	border-width: 2px;
+}
+
+.lang-button:disabled {
+	filter: opacity(30%);
+}
+
+.lang-button:enabled:hover {
+	background-color: var(--bg);
 }
 
 .logo:hover {
