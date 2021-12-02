@@ -1,13 +1,12 @@
 package net.ritzow.news;
 
 import j2html.rendering.FlatHtml;
+import j2html.rendering.HtmlBuilder;
 import j2html.tags.DomContent;
 import j2html.tags.specialized.FormTag;
-import j2html.tags.specialized.HtmlTag;
 import java.io.IOException;
 import java.io.UncheckedIOException;
-import net.ritzow.jetstart.RequestHandlerContent;
-import net.ritzow.jetstart.RequestHandlerContent.RequestHandler;
+import net.ritzow.news.RequestHandlerContent.RequestHandler;
 
 import static j2html.TagCreator.*;
 
@@ -64,35 +63,41 @@ public class PageTemplate {
 		);
 	}
 	
-	public static HtmlTag fullPage(String title, DomContent... body) {
-		return html(
-			baseHead(title),
-			body().withClass("page").with(body)
-		);
+	public static DomContent inName(DomContent existing, String name, DomContent named) {
+		return new DomContent() {
+			@Override
+			public <T extends Appendable> T render(HtmlBuilder<T> builder, Object model) throws IOException {
+				((HtmlSessionState)model).insert(name, named);
+				existing.render(builder, model);
+				return builder.output();
+			}
+		};
 	}
 	
 	public static DomContent baseHead(String title) {
-		return freeze(head(
-			title(title),
-			link()
-				.withRel("icon")
-				.withHref("/icon.svg")
-				.withType("image/svg+xml"),
-			link()
-				.withRel("search")
-				.withHref("/opensearch")
-				.withType("application/opensearchdescription+xml")
-				.withTitle("Ritzow Net"),
-			link().withRel("stylesheet").withHref("/style.css"),
-			meta().withName("robots").withContent("noindex"),
-			meta().withName("viewport")
-				.withContent("width=device-width,initial-scale=1"),
-			meta().withCharset("utf-8"),
-			meta().withName("referrer").withContent("no-referrer")
-		));
+		return freeze(
+			head(
+				title(title),
+				link()
+					.withRel("icon")
+					.withHref("/icon.svg")
+					.withType("image/svg+xml"),
+				link()
+					.withRel("search")
+					.withHref("/opensearch")
+					.withType("application/opensearchdescription+xml")
+					.withTitle("Ritzow Net"),
+				link().withRel("stylesheet").withHref("/style.css"),
+				meta().withName("robots").withContent("noindex"),
+				meta().withName("viewport")
+					.withContent("width=device-width,initial-scale=1"),
+				meta().withCharset("utf-8"),
+				meta().withName("referrer").withContent("no-referrer")
+			)
+		);
 	}
 	
-	private static FormTag mainForm() {
+	public static FormTag mainForm() {
 		return form().withId("main").withAction("/form/main")
 			.withMethod("POST").withEnctype("multipart/form-data").with(
 			p("Username:"),

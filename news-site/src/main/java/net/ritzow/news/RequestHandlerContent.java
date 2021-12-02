@@ -1,4 +1,4 @@
-package net.ritzow.jetstart;
+package net.ritzow.news;
 
 import j2html.rendering.HtmlBuilder;
 import j2html.tags.DomContent;
@@ -8,7 +8,7 @@ public class RequestHandlerContent extends DomContent {
 	private final RequestHandler sup;
 	
 	public interface RequestHandler {
-		DomContent handle(HtmlSessionState request);
+		DomContent handle(HtmlSessionState request) throws IOException;
 	}
 	
 	public RequestHandlerContent(RequestHandler sup) {

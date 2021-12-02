@@ -53,9 +53,5 @@ public class HttpUser {
 			}
 		}
 		return available.iterator().next();
-//		return localesForUser(request).stream()
-//			.sorted(lang -> available.stream().map(Locale::getLanguage).anyMatch(lang.getLanguage()::equals))
-//			.filter(lang -> available.stream().map(Locale::getLanguage).anyMatch(lang.getLanguage()::equals))
-//			.findFirst().orElse(available.get(0));
 	}
 }

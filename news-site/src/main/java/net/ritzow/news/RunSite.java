@@ -4,11 +4,8 @@ import j2html.TagCreator;
 import j2html.tags.DomContent;
 import j2html.tags.specialized.HtmlTag;
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
 import java.io.UncheckedIOException;
 import java.nio.ByteBuffer;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.sql.SQLException;
 import java.text.NumberFormat;
@@ -19,9 +16,6 @@ import java.util.*;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
-import java.util.function.Supplier;
-import java.util.random.RandomGenerator;
-import java.util.random.RandomGeneratorFactory;
 import java.util.stream.Stream;
 import net.ritzow.jetstart.HtmlResult;
 import net.ritzow.jetstart.JettySetup;
@@ -41,34 +35,25 @@ import static j2html.TagCreator.*;
 import static java.util.Map.entry;
 import static net.ritzow.jetstart.JettyHandlers.newPath;
 import static net.ritzow.news.PageTemplate.*;
+import static net.ritzow.news.ResourceUtil.*;
 
 public class RunSite {
 	
-	private static ContentManager cm;
+	private static final Lock shutdownLock = new ReentrantLock();
+	private static final Condition shutdownCond = shutdownLock.newCondition();
+	
+	private static ContentManager CONTENT_MANAGER;
 	
 	public static void main(String[] args) throws Exception {
-		cm = ContentManager.ofMemoryDatabase();
+		CONTENT_MANAGER = ContentManager.ofMemoryDatabase();
 		var content = resourceAsString("/content/Sandbox2D.md");
-		cm.newArticle("sandbox2d", Locale.forLanguageTag("en-US"), "Sandbox2D Readme", content);
-		cm.newArticle("sandbox2d", Locale.forLanguageTag("en-US"), "Sandbox2D Readme v2", content + "\n\nAND SOME EXTRA.");
-		cm.newArticle("sandbox2d", Locale.forLanguageTag("es"), "Sandbox2D Readme v2 Spanish", content);
-		cm.newArticle("blahblah", Locale.forLanguageTag("es"), "blahblah! Español", "***HELLO!!!ñ***");
+		CONTENT_MANAGER.newArticle("sandbox2d", Locale.forLanguageTag("en-US"), "Sandbox2D Readme", content);
+		CONTENT_MANAGER.newArticle("sandbox2d", Locale.forLanguageTag("en-US"), "Sandbox2D Readme v2", content + "\n\nAND SOME EXTRA.");
+		CONTENT_MANAGER.newArticle("sandbox2d", Locale.forLanguageTag("es"), "Sandbox2D Readme v2 Spanish", content);
 		
-		RandomGenerator random = RandomGeneratorFactory.getDefault().create(0);
+		ContentUtil.genArticles(CONTENT_MANAGER);
 		
-		for(int i = 0; i < 25; i++) {
-			int length = random.nextInt(200, 1000);
-			String title = generateGibberish(random, 3, 5);
-			for(Locale locale : cm.getAvailableLocales()) {
-				if(random.nextFloat() < 0.7) {
-					cm.newArticle(Integer.toHexString(i),
-						locale, title + " " + locale.getDisplayLanguage(locale), generateGibberish(random, length, 6));
-				}
-			}
-		}
-		
-		/* TODO use integrity attribute to verify content if delivered via CDN */
-		/* TODO and use crossorigin="anonymous" */
+		/* TODO use integrity attribute to verify content if delivered via CDN and use crossorigin="anonymous" */
 		//TODO set loading="lazy" on img HTML elements.
 		//TODO deliver article content using svg elements
 		//TODO look into using noscript if ever using javascript
@@ -92,10 +77,20 @@ public class RunSite {
 		
 		server.start();
 		
-//		JmDNS mdns = JmDNS.create(InetAddress.getLocalHost(), "news.local");
+		try {
+			shutdownLock.lock();
+			shutdownCond.awaitUninterruptibly();
+		} finally {
+			shutdownLock.unlock();
+		}
 		
+		server.stop();
+		CONTENT_MANAGER.shutdown();
+		server.join();
+	}
+	
+	private static void processSql() {
 		//TODO create a webpage to submit sql commands
-		/* Shutdown on user input */
 //		try(var reader = new InputStreamReader(System.in, StandardCharsets.UTF_8)) {
 //			try(var db = cm.getConnection()) {
 //				/* TODO set interactive to false and create a loop, create a StringReader after creating a query string */
@@ -106,32 +101,7 @@ public class RunSite {
 //		} catch(IOException | SQLException e) {
 //			e.printStackTrace();
 //		}
-		
-		try {
-			shutdownLock.lock();
-			shutdownCond.awaitUninterruptibly();
-		} finally {
-			shutdownLock.unlock();
-		}
-		
-//		mdns.close();
-		server.stop();
-		cm.shutdown();
-		server.join();
 	}
-	
-	private static String resourceAsString(String resource) throws IOException {
-		try(var in = RunSite.class.getResourceAsStream(resource)) {
-			return new String(in.readAllBytes(), StandardCharsets.UTF_8);
-		}
-	}
-	
-	private static Supplier<InputStream> open(String resource) {
-		return () -> RunSite.class.getResourceAsStream(resource);
-	}
-	
-	//TODO html tag itself needs to have lang
-	//TODO need a readable way of nesting named elements
 
 	private static HtmlTag page(String title, Locale locale) {
 		return html().withLang(locale.toLanguageTag()).with(
@@ -142,19 +112,27 @@ public class RunSite {
 				footer().withClasses("page-footer", "footer", "foreground").with(
 					span(
 						text("Server Time: "),
-						dynamic(state -> time(rawHtml(ZonedDateTime.now().format(
-							DateTimeFormatter.ofLocalizedDateTime(FormatStyle.LONG).withLocale(Locale.ROOT))))),
+						time(rawHtml(serverTime())),
 						text(" Heap: "),
-						dynamic(state -> text(NumberFormat.getIntegerInstance(HttpUser.localesForUser(state.request()).get(0))
-							.format((Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory()) / 1000) + " KB"))
+						dynamic(state -> {
+							long kbUsed = (Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory()) / 1000;
+							NumberFormat format = NumberFormat.getIntegerInstance(locale);
+							return text(format.format(kbUsed) + " KB");
+						})
 					)
 				)
 			)
 		);
 	}
 	
-	private static final Lock shutdownLock = new ReentrantLock();
-	private static final Condition shutdownCond = shutdownLock.newCondition();
+	private static String serverTime() {
+		return ZonedDateTime.now().format(
+			DateTimeFormatter.ofLocalizedDateTime(FormatStyle.LONG).withLocale(Locale.ROOT));
+	}
+	
+	public static Locale pageLocale(Request request) throws SQLException {
+		return HttpUser.bestLocale(request, CONTENT_MANAGER.getSupportedLocales());
+	}
 	
 	private static void shutdownPage(Request request) {
 		
@@ -199,7 +177,7 @@ public class RunSite {
 		Translator.ofProperties(properties("/lang/welcome.properties"));
 	
 	private static DomContent header(Request request) throws SQLException {
-		List<Locale> locales = cm.getAvailableLocales();
+		List<Locale> locales = CONTENT_MANAGER.getSupportedLocales();
 		Locale bestCurrent = HttpUser.bestLocale(request, locales);
 		return each(
 			logo("/icon.svg"),
@@ -267,21 +245,21 @@ public class RunSite {
 			
 			//TODO read in chunks so parsing can happen while receiving packets.
 //			boolean finished = in.isFinished();
-////			ByteBuffer buffer = null;
-////			while(!finished) {
-////				request.getHttpInput()
-////				int available = in.available();
-////				if(buffer == null || available > buffer.capacity()) {
-////					buffer = ByteBuffer.wrap(new byte[available]);
-////				} else if(buffer) {
-////
-////				} else {
-////					buffer = ByteBuffer.wrap(new byte[2048]);
-////				}
-////				buffer = (buffer == null || available > buffer.length) ? new byte[available] : new byte[2048];
-////				int count = in.read(buffer);
-////				parser.parse(buffer, finished = in.isFinished());
-////			}
+//			ByteBuffer buffer = null;
+//			while(!finished) {
+//				request.getHttpInput()
+//				int available = in.available();
+//				if(buffer == null || available > buffer.capacity()) {
+//					buffer = ByteBuffer.wrap(new byte[available]);
+//				} else if(buffer) {
+//
+//				} else {
+//					buffer = ByteBuffer.wrap(new byte[2048]);
+//				}
+//				buffer = (buffer == null || available > buffer.length) ? new byte[available] : new byte[2048];
+//				int count = in.read(buffer);
+//				parser.parse(buffer, finished = in.isFinished());
+//			}
 		} catch(IOException e) {
 			throw new UncheckedIOException(e);
 		}
@@ -303,7 +281,7 @@ public class RunSite {
 		}
 		
 		try {
-			Locale bestLocale = HttpUser.bestLocale(request, cm.getAvailableLocales());
+			Locale bestLocale = HttpUser.bestLocale(request, CONTENT_MANAGER.getSupportedLocales());
 			ResponseUtil.doGetHtmlStreamed(request, new HtmlResult(page("RedNet", bestLocale), Map.of(
 				"full-content", content(),
 				"header-content", header(request),
@@ -312,7 +290,7 @@ public class RunSite {
 						Stream.of(
 							h1(translated("greeting")).withClass("title")
 						),
-						cm.getArticlesForLocale(bestLocale).stream().map(
+						CONTENT_MANAGER.getArticlesForLocale(bestLocale).stream().map(
 							article3 -> articleBox(article3.title(), "/article/" + article3.urlname())
 						)
 					).toArray(DomContent[]::new)
@@ -333,7 +311,7 @@ public class RunSite {
 			return;
 		}
 		
-		Locale locale = HttpUser.bestLocale(request, cm.getAvailableLocales());
+		Locale locale = HttpUser.bestLocale(request, CONTENT_MANAGER.getSupportedLocales());
 		
 		ResponseUtil.doGetHtmlStreamed(request, page("RedNet", locale),
 			entry("full-content",
@@ -355,7 +333,7 @@ public class RunSite {
 		}
 		
 		Optional<String> name = StaticPathHandler.peekComponent(request);
-		Locale mainLocale = HttpUser.bestLocale(request, cm.getAvailableLocales());
+		Locale mainLocale = HttpUser.bestLocale(request, CONTENT_MANAGER.getSupportedLocales());
 		
 		//TODO make sure there isn't an extra component in the path
 		
@@ -375,7 +353,7 @@ public class RunSite {
 		}
 		
 		String urlname = name.get();
-		List<Locale> supported = cm.getArticleLocales(urlname);
+		List<Locale> supported = CONTENT_MANAGER.getArticleLocales(urlname);
 		
 		if(supported.isEmpty()) {
 			ResponseUtil.doGetHtmlStreamed(request, page("Error", mainLocale),
@@ -389,7 +367,7 @@ public class RunSite {
 		}
 		
 		Locale lang = HttpUser.bestLocale(request, supported);
-		Optional<Article<MarkdownContent>> article = cm.getLatestArticle(urlname, lang, reader -> {
+		Optional<Article<MarkdownContent>> article = CONTENT_MANAGER.getLatestArticle(urlname, lang, reader -> {
 			try {
 				return new MarkdownContent(reader);
 			} catch(IOException e) {
@@ -447,32 +425,4 @@ public class RunSite {
 			)
 		), HttpStatus.INTERNAL_SERVER_ERROR_500), TRANSLATIONS);
 	}
-	
-	private static Properties properties(String path) {
-		try(var in = new InputStreamReader(RunSite.class.getResourceAsStream(path), StandardCharsets.UTF_8)) {
-			var p = new Properties();
-			p.load(in);
-			return p;
-		} catch(IOException e) {
-			throw new UncheckedIOException(e);
-		}
-	}
-	
-	private static final String VALID_CHARS = "abcdefghijklmnopqrstuvwxyz";
-	
-	private static String generateGibberish(RandomGenerator random, int words, int maxWordSize) {
-		StringBuilder builder = new StringBuilder(words * maxWordSize/2);
-		for(int i = 0; i < words; i++) {
-			char[] word = new char[random.nextInt(maxWordSize + 1) + 1];
-			for(int j = 0; j < word.length; j++) {
-				word[j] = VALID_CHARS.charAt(random.nextInt(VALID_CHARS.length()));
-			}
-			if(random.nextBoolean()) {
-				word[0] = Character.toUpperCase(word[0]);
-			}
-			builder.append(word).append(' ');
-		}
-		return builder.toString();
-	}
-	
 }

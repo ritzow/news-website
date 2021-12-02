@@ -239,21 +239,17 @@ public final class ContentManager {
 		}
 	}
 	
-	public List<Entry<Short, String>> getSupportedLocales() throws SQLException {
+	public List<Locale> getSupportedLocales() throws SQLException {
 		try(var db = this.db.getConnection()) {
-			try(var st = db.prepareStatement("SELECT id, code FROM locales")) {
+			try(var st = db.prepareStatement("SELECT code FROM locales")) {
 				ResultSet result = st.executeQuery();
-				var list = new ArrayList<Entry<Short, String>>(4);
+				var list = new ArrayList<Locale>(4);
 				while(result.next()) {
-					list.add(entry(result.getShort("id"), result.getString("code")));
+					list.add(Locale.forLanguageTag(result.getString("code")));
 				}
 				return list;
 			}
 		}
-	}
-	
-	public List<Locale> getAvailableLocales() throws SQLException {
-		return getSupportedLocales().stream().map(entry -> Locale.forLanguageTag(entry.getValue())).toList();
 	}
 	
 	public List<Locale> getArticleLocales(String urlname) throws SQLException {

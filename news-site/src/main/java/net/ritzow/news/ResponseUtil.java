@@ -14,7 +14,6 @@ import java.sql.SQLException;
 import java.util.Map;
 import java.util.Map.Entry;
 import net.ritzow.jetstart.HtmlResult;
-import net.ritzow.jetstart.HtmlSessionState;
 import net.ritzow.jetstart.Translator;
 import org.eclipse.jetty.http.HttpHeader;
 import org.eclipse.jetty.server.Handler;
@@ -49,6 +48,16 @@ public class ResponseUtil {
 		response.setHeader(HttpHeader.REFERER, "no-referrer");
 	}
 	
+	/** RequestState contains all per-request session state, providing an
+	 * efficient alternative to String-based request attributes **/
+//	static class RequestState {
+//
+//	}
+	
+	interface PageHandler {
+		void accept(Request request) throws IOException, SQLException;
+	}
+	
 	static Handler generatedHandler(PageHandler function) {
 		return new AbstractHandler() {
 			@Override
@@ -64,7 +73,13 @@ public class ResponseUtil {
 		};
 	}
 	
-	interface PageHandler {
-		void accept(Request request) throws IOException, SQLException;
+	@SuppressWarnings("unchecked")
+	static <T> T requestAttribute(Request request) {
+		return (T)request.getAttribute("net.ritzow.web.request");
+	}
+	
+	/* Set request-related data */
+	static <T> void requestAttribute(Request request, T value) {
+		request.setAttribute("net.ritzow.web.request", value);
 	}
 }
