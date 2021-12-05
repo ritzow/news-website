@@ -22,6 +22,9 @@ dependencies {
 	//implementation 'com.h2database:h2:2.0.202'
 
 	runtimeOnly 'org.hsqldb:hsqldb:2.6.1'
+
+	testImplementation 'org.mortbay.jetty.loadgenerator:jetty-load-generator-client:3.1.0'
+	testImplementation 'org.junit.jupiter:junit-jupiter:5.8.2'
 }
 
 compileJava {
@@ -82,11 +85,17 @@ jar {
 	}
 }
 
+test {
+	useJUnitPlatform()
+
+	jvmArgs '-Dnet.ritzow.certs=' + properties.getProperty('keystore.file'),
+			'-Dnet.ritzow.pass=' + properties.getProperty('keystore.password'),
+			'-Dnet.ritzow.debug=true'
+}
+
 run {
 	mainClass.set('net.ritzow.news.RunSite')
 	mainModule.set('net.ritzow.news')
-
-	standardInput = System.in
 
 	jvmArgs '-Dnet.ritzow.certs=' + properties.getProperty('keystore.file'),
 			'-Dnet.ritzow.pass=' + properties.getProperty('keystore.password'),
