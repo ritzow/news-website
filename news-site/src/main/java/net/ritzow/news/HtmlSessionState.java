@@ -25,6 +25,10 @@ public class HtmlSessionState {
 		return content;
 	}
 	
+	public Map<String, DomContent> named() {
+		return tags;
+	}
+	
 	public void insert(String name, DomContent content) {
 		var cur = tags.putIfAbsent(name, content);
 		if(cur != null) {

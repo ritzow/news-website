@@ -2,7 +2,6 @@ package net.ritzow.news;
 
 import j2html.rendering.FlatHtml;
 import j2html.tags.DomContent;
-import j2html.tags.specialized.HtmlTag;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
@@ -11,10 +10,6 @@ import java.io.UncheckedIOException;
 import java.io.Writer;
 import java.nio.charset.StandardCharsets;
 import java.sql.SQLException;
-import java.util.Map;
-import java.util.Map.Entry;
-import net.ritzow.jetstart.HtmlResult;
-import net.ritzow.jetstart.Translator;
 import org.eclipse.jetty.http.HttpHeader;
 import org.eclipse.jetty.server.Handler;
 import org.eclipse.jetty.server.Request;
@@ -22,17 +17,12 @@ import org.eclipse.jetty.server.Response;
 import org.eclipse.jetty.server.handler.AbstractHandler;
 
 public class ResponseUtil {
-	@SafeVarargs
-	static void doGetHtmlStreamed(Request request, HtmlTag html, Entry<String, DomContent>... map) {
-		doGetHtmlStreamed(request, new HtmlResult(html, Map.ofEntries(map)), RunSite.TRANSLATIONS);
-	}
 	
-	static void doGetHtmlStreamed(Request request, HtmlResult result, Translator<String> translations) {
+	static void doGetHtmlStreamed(Request request, int status, DomContent html) {
 		try {
-			setBasicStreamingHeaders(request.getResponse(), result.status(), "text/html; charset=utf-8");
+			setBasicStreamingHeaders(request.getResponse(), status, "text/html; charset=utf-8");
 			Writer body = new OutputStreamWriter(request.getResponse().getHttpOutput(), StandardCharsets.UTF_8);
-			Object model = new HtmlSessionState(request, translations, result.named());
-			result.html().render(FlatHtml.into(body).appendUnescapedText("<!DOCTYPE html>"), model);
+			html.render(FlatHtml.into(body).appendUnescapedText("<!DOCTYPE html>"), null);
 			body.flush();
 			request.setHandled(true);
 		} catch(IOException e) {

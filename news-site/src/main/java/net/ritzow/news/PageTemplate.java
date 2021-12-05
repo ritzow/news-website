@@ -1,12 +1,17 @@
 package net.ritzow.news;
 
+import j2html.TagCreator;
 import j2html.rendering.FlatHtml;
 import j2html.rendering.HtmlBuilder;
 import j2html.tags.DomContent;
 import j2html.tags.specialized.FormTag;
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.util.HashMap;
+import java.util.Map;
+import net.ritzow.jetstart.Translator;
 import net.ritzow.news.RequestHandlerContent.RequestHandler;
+import org.eclipse.jetty.server.Request;
 
 import static j2html.TagCreator.*;
 
@@ -16,6 +21,7 @@ public class PageTemplate {
 	// cached UnescapedText depending on the value of 'model'.
 	/** Pre-render child elements to a string instead of traversing DomContent **/
 	public static DomContent freeze(DomContent... content) {
+		
 		var html = FlatHtml.inMemory();
 		for(var c : content) {
 			try {
@@ -27,26 +33,64 @@ public class PageTemplate {
 		return rawHtml(html.output().toString());
 	}
 	
+	/** Initialize a context for dynamic HTML elements **/
+	public static DomContent context(Request request, Translator<String> translator, Map<String, DomContent> context, DomContent content) {
+		return new DomContent() {
+			@Override
+			public <T extends Appendable> T render(HtmlBuilder<T> builder, Object model) throws IOException {
+				content.render(builder, new HtmlSessionState(request, translator, context));
+				return builder.output();
+			}
+		};
+	}
+	
+	//TODO improve efficiency
+	@RequiresDynamicHtml
+	public static DomContent dynamic(DomContent content, Map<String, DomContent> template) {
+		return new DomContent() {
+			@Override
+			public <T extends Appendable> T render(HtmlBuilder<T> builder, Object model) throws IOException {
+				var current = (HtmlSessionState)model;
+				//TODO this could probably be more efficient
+				var map = new HashMap<>(current.named());
+				map.putAll(template);
+				var state = new HtmlSessionState(current.request(), current.translator(), map);
+				content.render(builder, state);
+				return builder.output();
+			}
+		};
+	}
+	
 	public static DomContent dynamic(RequestHandler handler) {
 		return new RequestHandlerContent(handler);
 	}
 	
 	public static DomContent named(String name) {
-		return new RequestHandlerContent(state -> state.named(name));
+		return new DomContent() {
+			@Override
+			public <T extends Appendable> T render(HtmlBuilder<T> builder, Object model) throws IOException {
+				((HtmlSessionState)model).named(name).render(builder, model);
+				return builder.output();
+			}
+		};
 	}
 	
 	public static DomContent translated(String name) {
-		return new RequestHandlerContent(state ->
-			rawHtml(state.translator().forPrioritized(name, HttpUser.localesForUser(state.request()))));
+		return new DomContent() {
+			@Override
+			public <T extends Appendable> T render(HtmlBuilder<T> builder, Object model) throws IOException {
+				var state = ((HtmlSessionState)model);
+				builder.appendUnescapedText(state.translator().forPrioritized(name, HttpUser.localesForUser(state.request())));
+				return builder.output();
+			}
+		};
+		
+//		return new RequestHandlerContent(state ->
+//			rawHtml(state.translator().forPrioritized(name, HttpUser.localesForUser(state.request()))));
 	}
 	
 	public static DomContent mainBox(DomContent... content) {
-		return div().withClasses("main-box", "foreground")
-			.with(content).with(
-			a().withClasses("jump-top", "foreground").withHref("#top").with(
-				rawHtml("Return to top")
-			)
-		);
+		return div().withClasses("content-center", "foreground").with(content);
 	}
 	
 	public static DomContent articleBox(String title, String url) {
@@ -68,38 +112,41 @@ public class PageTemplate {
 		);
 	}
 	
-	public static DomContent inName(DomContent existing, String name, DomContent named) {
-		return new DomContent() {
-			@Override
-			public <T extends Appendable> T render(HtmlBuilder<T> builder, Object model) throws IOException {
-				((HtmlSessionState)model).insert(name, named);
-				existing.render(builder, model);
-				return builder.output();
-			}
-		};
-	}
+//	public static DomContent inName(DomContent existing, String name, DomContent named) {
+//		return new DomContent() {
+//			@Override
+//			public <T extends Appendable> T render(HtmlBuilder<T> builder, Object model) throws IOException {
+//				((HtmlSessionState)model).insert(name, named);
+//				existing.render(builder, model);
+//				return builder.output();
+//			}
+//		};
+//	}
 	
-	public static DomContent baseHead(String title) {
-		return freeze(
-			head(
-				title(title),
-				link()
-					.withRel("icon")
-					.withHref("/icon.svg")
-					.withType("image/svg+xml"),
-				link()
-					.withRel("search")
-					.withHref("/opensearch")
-					.withType("application/opensearchdescription+xml")
-					.withTitle("Ritzow Net"),
-				link().withRel("stylesheet").withHref("/style.css"),
-				meta().withName("robots").withContent("noindex"),
-				meta().withName("viewport")
-					.withContent("width=device-width,initial-scale=1"),
-				meta().withCharset("utf-8"),
-				meta().withName("referrer").withContent("no-referrer")
-			)
-		);
+	private static final DomContent HEAD_HTML = TagCreator.head(
+		named("title"),
+		freeze(
+			link()
+				.withRel("icon")
+				.withHref("/icon.svg")
+				.withType("image/svg+xml"),
+			link()
+				.withRel("search")
+				.withHref("/opensearch")
+				.withType("application/opensearchdescription+xml")
+				.withTitle("Ritzow Net"),
+			link().withRel("stylesheet").withHref("/style.css"),
+			meta().withName("robots").withContent("noindex"),
+			meta().withName("viewport")
+				.withContent("width=device-width,initial-scale=1"),
+			meta().withCharset("utf-8"),
+			meta().withName("referrer").withContent("no-referrer")
+		)
+	);
+	
+	@RequiresDynamicHtml
+	public static DomContent head(String title) {
+		return dynamic(HEAD_HTML, Map.of("title", title(title)));
 	}
 	
 	public static FormTag mainForm() {
