@@ -80,11 +80,6 @@ public final class ContentManager {
 		uploadLocales();
 		
 		runMultiple(
-			//TODO use MERGE statement to insert
-//			--MERGE INTO articles (urlname, locale_original)
-//				--	VALUES (in_urlname, locale_id) AS tuple
-//				--	ON urlname = in_urlname
-//				--	WHEN NOT MATCHED THEN INSERT VALUES tuple;
 			"""
 			CREATE PROCEDURE new_article(IN in_urlname URLNAME, IN locale_original LOCALENAME,
 				IN title BLOB, IN markdown BLOB)

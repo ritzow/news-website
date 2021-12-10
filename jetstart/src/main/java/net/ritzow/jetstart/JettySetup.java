@@ -1,10 +1,12 @@
 package net.ritzow.jetstart;
 
+import jakarta.servlet.RequestDispatcher;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.SessionTrackingMode;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
+import java.net.InetAddress;
 import java.nio.file.Path;
 import java.security.KeyStore;
 import java.security.KeyStoreException;
@@ -31,24 +33,32 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public class JettySetup {
-	private static final boolean DEBUG = true;
-	
-	public static Server newStandardServer(Path keyStore, String keyStorePassword, Handler handler, Handler errorHandler) throws CertificateException,
+	public static Server newStandardServer(InetAddress bind, boolean requireSni,
+			Path keyStore, String keyStorePassword, Handler handler, Handler errorHandler) throws CertificateException,
 			IOException, KeyStoreException, NoSuchAlgorithmException {
 		QueuedThreadPool pool = new QueuedThreadPool(Runtime.getRuntime().availableProcessors());
 		pool.setName("pool");
 		Server server = new Server(pool);
-		setupConnectors(server, keyStore, keyStorePassword);
+		setupConnectors(bind, requireSni, server, keyStore, keyStorePassword);
 		var onError = new ErrorHandler() {
 			@Override
 			public void handle(String target, Request baseRequest,
 				HttpServletRequest request, HttpServletResponse response) throws IOException, ServletException {
+//				Throwable cause = (Throwable)request.getAttribute(RequestDispatcher.ERROR_EXCEPTION);
+//				if(cause != null) {
+//					cause.printStackTrace();
+//				}
 				errorHandler.handle(target, baseRequest, request, response);
 			}
 		};
 		server.setErrorHandler(onError);
+		server.setHandler(setupHandlers(server, handler));
+		return server;
+	}
+	
+	private static Handler setupHandlers(Server server, Handler userHandler) {
 		GzipHandler gzipHandler = new GzipHandler();
-		gzipHandler.setHandler(setupSessionInfrastructure(server, handler));
+		gzipHandler.setHandler(setupSessionInfrastructure(server, userHandler));
 		SecuredRedirectHandler secureHandler = new SecuredRedirectHandler();
 		secureHandler.setHandler(gzipHandler);
 		RequestLogHandler logHandler = new RequestLogHandler();
@@ -56,12 +66,11 @@ public class JettySetup {
 		Logger log = LoggerFactory.getLogger(JettySetup.class);
 		logHandler.setRequestLog((request, response) -> log.info(
 			request.getRemoteInetSocketAddress().getAddress().getHostAddress()
-			+ " " + request.getMethod()
-			+ " " + request.getHttpURI().asString()
-			+ " \"" + HttpStatus.getCode(response.getStatus()).getMessage()
-			+ "\" (" + response.getStatus() + ")"));
-		server.setHandler(logHandler);
-		return server;
+				+ " " + request.getMethod()
+				+ " " + request.getHttpURI().asString()
+				+ " \"" + HttpStatus.getCode(response.getStatus()).getMessage()
+				+ "\" (" + response.getStatus() + ")"));
+		return logHandler;
 	}
 	
 	private static Handler setupSessionInfrastructure(Server server, Handler inner) {
@@ -80,8 +89,9 @@ public class JettySetup {
 		return handler;
 	}
 	
-	private static void setupConnectors(Server server, Path keyStore, String keyStorePassword) throws CertificateException,
-		IOException, KeyStoreException, NoSuchAlgorithmException {
+	private static void setupConnectors(InetAddress bind, boolean requireSni,
+			Server server, Path keyStore, String keyStorePassword) throws CertificateException,
+			IOException, KeyStoreException, NoSuchAlgorithmException {
 		var httpConfig = new HttpConfiguration();
 		httpConfig.setSendServerVersion(false);
 		httpConfig.setSecureScheme("https");
@@ -93,15 +103,11 @@ public class JettySetup {
 		var secureCustomizer = new SecureRequestCustomizer();
 		secureCustomizer.setStsMaxAge(3600);
 		secureCustomizer.setStsIncludeSubDomains(true);
-		if(DEBUG) {
-			secureCustomizer.setSniHostCheck(false);
-		}
+		secureCustomizer.setSniHostCheck(requireSni);
 		httpConfig.addCustomizer(secureCustomizer);
 		var http1 = new HttpConnectionFactory(httpConfig);
 		var http11Insecure = new ServerConnector(server, http1);
-		if(DEBUG) {
-			http11Insecure.setHost("::1");
-		}
+		http11Insecure.setHost(bind.getHostAddress());
 		http11Insecure.setPort(80);
 		var http2Config = new HttpConfiguration(httpConfig);
 		var http2 = new HTTP2ServerConnectionFactory(http2Config);
@@ -114,9 +120,7 @@ public class JettySetup {
 		sslFactory.setKeyStorePassword(keyStorePassword);
 		var ssl = new SslConnectionFactory(sslFactory, alpn.getProtocol());
 		var httpSecure = new ServerConnector(server, ssl, alpn, http2, http1);
-		if(DEBUG) {
-			httpSecure.setHost("::1");
-		}
+		httpSecure.setHost(bind.getHostAddress());
 		httpSecure.setPort(443);
 		server.setConnectors(new Connector[] { http11Insecure, httpSecure });
 	}

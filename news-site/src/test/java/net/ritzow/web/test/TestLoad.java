@@ -1,5 +1,6 @@
 package net.ritzow.web.test;
 
+import java.net.InetAddress;
 import java.nio.file.Path;
 import java.security.KeyStore;
 import org.eclipse.jetty.client.api.Request;
@@ -8,12 +9,11 @@ import org.eclipse.jetty.util.ssl.SslContextFactory.Client;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
-import org.mortbay.jetty.load.generator.HTTP1ClientTransportBuilder;
 import org.mortbay.jetty.load.generator.HTTP2ClientTransportBuilder;
 import org.mortbay.jetty.load.generator.LoadGenerator;
 import org.mortbay.jetty.load.generator.Resource;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.fail;
 
 @DisplayName("Use Jetty Load Generator to test server speed")
 class TestLoad {
@@ -23,6 +23,7 @@ class TestLoad {
 	@Timeout(2)
 	void runTest() throws Exception {
 		var server = net.ritzow.news.RunSite.startServer(
+			InetAddress.getByName("::1"), false,
 			Path.of(System.getProperty("net.ritzow.certs")),
 			System.getProperty("net.ritzow.pass")
 		);
@@ -52,7 +53,6 @@ class TestLoad {
 			.threads(1)
 			.usersPerThread(1)
 			.channelsPerUser(6)
-			//.warmupIterationsPerThread(10)
 			.iterationsPerThread(100)
 			.resourceRate(0)
 			.requestListener(new Listener() {

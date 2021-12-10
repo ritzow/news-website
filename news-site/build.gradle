@@ -3,7 +3,7 @@ plugins {
 	id 'application'
 	id "com.github.ben-manes.versions" version "0.39.0"
 	id 'org.kordamp.gradle.jdeps' version '0.15.0'
-	id 'net.ritzow.news.build'
+	//id 'net.ritzow.news.build'
 	//id "com.eriwen.gradle.css" version "2.14.0"
 	//id "com.eriwen.gradle.js" version "2.14.1"
 }
@@ -31,6 +31,7 @@ compileJava {
 	options.encoding 'UTF-8'
 }
 
+
 import java.nio.file.Files
 import java.nio.file.Path
 
@@ -42,7 +43,7 @@ try(def file = Files.newBufferedReader(projectDir.toPath().resolve('project.prop
 
 processResources {
 	from('src/main') {
-		include 'xml/**', 'lang/**', 'content/**'
+		include 'xml/**', 'lang/**', 'content/**', 'font/**'
 	}
 }
 

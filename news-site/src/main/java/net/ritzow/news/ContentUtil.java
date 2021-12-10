@@ -8,7 +8,7 @@ import java.util.random.RandomGeneratorFactory;
 public class ContentUtil {
 	private static final String VALID_CHARS = "abcdefghijklmnopqrstuvwxyz";
 	
-	private static String generateGibberish(RandomGenerator random, int words, int maxWordSize) {
+	public static String generateGibberish(RandomGenerator random, boolean md, int words, int maxWordSize) {
 		StringBuilder builder = new StringBuilder(words * maxWordSize/2);
 		for(int i = 0; i < words; i++) {
 			char[] word = new char[random.nextInt(maxWordSize + 1) + 1];
@@ -18,7 +18,12 @@ public class ContentUtil {
 			if(random.nextBoolean()) {
 				word[0] = Character.toUpperCase(word[0]);
 			}
-			builder.append(word).append(' ');
+			
+			if(md && random.nextInt(100) < 25) {
+				builder.append("**").append(word).append("** ");
+			} else {
+				builder.append(word).append(' ');
+			}
 		}
 		return builder.toString();
 	}
@@ -27,12 +32,12 @@ public class ContentUtil {
 		RandomGenerator random = RandomGeneratorFactory.getDefault().create(0);
 		
 		for(int i = 0; i < 25; i++) {
-			int length = random.nextInt(200, 1000);
-			String title = ContentUtil.generateGibberish(random, 3, 5);
+			int length = random.nextInt(200, 2000);
+			String title = ContentUtil.generateGibberish(random, false, 3, 5);
 			for(Locale locale : cm.getSupportedLocales()) {
-				if(random.nextFloat() < 0.7) {
+				if(random.nextDouble() < 0.75) {
 					cm.newArticle(Integer.toHexString(i),
-						locale, title + " " + locale.getDisplayLanguage(locale), ContentUtil.generateGibberish(random, length, 6));
+						locale, title + " " + locale.getDisplayLanguage(locale), ContentUtil.generateGibberish(random, true, length, 6));
 				}
 			}
 		}

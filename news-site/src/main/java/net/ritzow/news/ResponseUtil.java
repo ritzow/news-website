@@ -10,6 +10,8 @@ import java.io.UncheckedIOException;
 import java.io.Writer;
 import java.nio.charset.StandardCharsets;
 import java.sql.SQLException;
+import java.util.List;
+import java.util.Locale;
 import org.eclipse.jetty.http.HttpHeader;
 import org.eclipse.jetty.server.Handler;
 import org.eclipse.jetty.server.Request;
@@ -18,9 +20,14 @@ import org.eclipse.jetty.server.handler.AbstractHandler;
 
 public class ResponseUtil {
 	
-	static void doGetHtmlStreamed(Request request, int status, DomContent html) {
+	static void doGetHtmlStreamed(Request request, int status, List<Locale> langs, DomContent html) {
 		try {
+			//TODO send prefetch 103 Early Hints
+			//request.getResponse().getHttpChannel().sendResponse(new MetaData.Response())
+			
 			setBasicStreamingHeaders(request.getResponse(), status, "text/html; charset=utf-8");
+			request.getResponse().getHttpFields().addCSV(HttpHeader.CONTENT_LANGUAGE,
+				langs.stream().distinct().map(Locale::toLanguageTag).toArray(String[]::new));
 			Writer body = new OutputStreamWriter(request.getResponse().getHttpOutput(), StandardCharsets.UTF_8);
 			html.render(FlatHtml.into(body).appendUnescapedText("<!DOCTYPE html>"), null);
 			body.flush();
