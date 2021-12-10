@@ -1,5 +1,10 @@
 @charset "utf-8";
 
+@font-face {
+	font-family: "Open Sans";
+	src: url("/opensans.ttf") format("truetype");
+}
+
 /* https://stackoverflow.com/questions/90178/make-a-div-fill-the-height-of-the-remaining-screen-space */
 
 /* entire webpage */
@@ -24,16 +29,13 @@
 	/* html element must be sized https://stackoverflow.com/a/7049918/2442171 */
 	height: 100%;
 
-	//scrollbar-color: rgb(73, 73, 73) var(--bg);
-
-	/* Remove default margin around content */
-	margin: 0;
-
 	/* When jumping to anchors, scroll smoothly */
 	scroll-behavior: smooth;
 }
 
-:root > body {
+body {
+	all: initial;
+	font-family: "Open Sans", ui-sans-serif;
 	display: flex;
 	flex-flow: column;
 	height: 100%;
@@ -43,19 +45,18 @@
 
 /* Keep the footer at the bottom of the page */
 
-:root > body > .page-body {
+body > .page-body {
 	flex: 0 1 auto;
 	width: 100%;
-	margin-top: var(--pad-big);
 	display: flex;
 }
 
-:root > body > .page-separator {
+body > .page-separator {
 	flex: 1 1 auto;
 	min-height: 30px;
 }
 
-:root > body > .page-footer {
+body > .page-footer {
 	flex: 0 1 auto;
 }
 
@@ -66,20 +67,15 @@
 	filter: var(--shadow);
 }
 
-/*.foreground ::selection {
-	background-color: var(--bg);
-	text-decoration: underline;
-	text-decoration-thickness: 3px;
-}*/
-
 .header {
+	position: relative;
 	border-bottom-left-radius: var(--radius);
 	border-bottom-right-radius: var(--radius);
-	position: relative;
-	width: fit-content;
+	max-width: max-content;
 	margin-left: 5%;
-	margin-right: auto;
+	margin-bottom: var(--pad-big);
 	user-select: none;
+	white-space: nowrap;
 	flex: 0 1 auto;
 }
 
@@ -89,6 +85,15 @@
 	text-decoration: none;
 	font-size: 2rem;
 	transition: filter 500ms;
+}
+
+.image {
+	max-width: 100%;
+	width: auto;
+	display: block;
+	margin-left: auto;
+	margin-right: auto;
+	pointer-events: none;
 }
 
 /* Language selection form */
@@ -128,6 +133,11 @@
 	}
 }
 
+.login-form {
+	display: inline;
+	//vertical-align: middle;
+}
+
 @media (hover: hover) {
 	.logo:hover {
 		filter: var(--logo-hover);
@@ -159,7 +169,7 @@
 }
 
 .content-center {
-	max-width: vaR(--content-box-width);
+	width: var(--content-box-width);
 	border-radius: var(--radius);
 }
 
@@ -172,26 +182,17 @@
 }
 
 .article-box {
+	display: block;
 	text-decoration: none;
 	color: black;
 	margin: var(--pad);
 	border-radius: var(--radius);
 	font-family: var(--display-font);
-	display: inline-block;
 }
 
 .article-box:hover {
 	filter: var(--shadow) brightness(85%);
 }
-
-/* TODO fix this stuff to work better again */
-// @media (min-width: 518px) {
-// 	.main-box {
-// 		border-radius: var(--radius);
-// 		margin-top: 16px * 2;
-// 		margin-bottom: 16px;
-// 	}
-// }
 
 .jump-top {
 	position: sticky;
@@ -200,7 +201,6 @@
 	font-family: var(--display-font);
 	text-decoration: none;
 	color: black;
-	//display: inline-block;
 	user-select: none;
 }
 
@@ -230,6 +230,7 @@
 .title {
 	text-align: center;
 	font-family: var(--display-font);
+	hyphens: auto;
 }
 
 .title-article {
@@ -247,37 +248,33 @@
 	font-weight: normal;
 }
 
-// .form-element {
-// 	width: 100%;
-// 	padding: 10px;
-// 	box-sizing: border-box;
-// 	border: none;
-// 	box-shadow: none;
-// 	outline-style: none;
-// 	background-color: #cccccc;
-// 	font-size: 1rem;
-// 	resize: vertical;
-// }
+.form-element {
+	width: 100%;
+	padding: 10px;
+	box-sizing: border-box;
+	border: none;
+	box-shadow: none;
+	outline-style: none;
+	background-color: #cccccc;
+	font-size: 1rem;
+	resize: vertical;
+}
 
-// .form-element:focus {
-// 	background-color: #b3b3b3;
-// }
+.form-element:focus {
+	background-color: #b3b3b3;
+}
 
-// .form-element:valid {
-// 	border-bottom: 2px solid black;
-// }
+.form-element:valid {
+	border-bottom: 2px solid black;
+}
 
-// .form-element:invalid {
-// 	border-bottom: 2px solid red;
-// }
+.form-element:invalid {
+	border-bottom: 2px solid red;
+}
 
 .markdown {
 	all: initial;
 	/* Properties for markdown text */
-}
-
-.markdown > * {
-	/* Set properties which were reset by .markdown rule */
 	font-family: var(--display-font);
 }
 
@@ -289,11 +286,3 @@
 .markdown strong {
 	font-weight: bold;
 }
-
-/* .img {
-	max-width: 100%;
-	width: auto;
-	display: block;
-	margin-left: auto;
-	margin-right: auto;
-} */

@@ -6,6 +6,7 @@ import j2html.tags.specialized.BodyTag;
 import j2html.tags.specialized.ButtonTag;
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.net.InetAddress;
 import java.nio.ByteBuffer;
 import java.nio.charset.CharacterCodingException;
 import java.nio.charset.CodingErrorAction;
@@ -21,6 +22,7 @@ import java.time.format.DateTimeFormatter;
 import java.time.format.FormatStyle;
 import java.util.*;
 import java.util.concurrent.CountDownLatch;
+import java.util.function.BiConsumer;
 import net.ritzow.jetstart.JettySetup;
 import net.ritzow.jetstart.StaticPathHandler;
 import net.ritzow.jetstart.Translator;
@@ -31,6 +33,7 @@ import org.eclipse.jetty.http.HttpMethod;
 import org.eclipse.jetty.http.HttpStatus;
 import org.eclipse.jetty.server.HttpInput;
 import org.eclipse.jetty.server.MultiPartParser;
+import org.eclipse.jetty.server.MultiPartParser.Handler;
 import org.eclipse.jetty.server.Request;
 import org.eclipse.jetty.server.Server;
 import org.eclipse.jetty.util.Callback;
@@ -51,39 +54,43 @@ import static net.ritzow.news.ResponseUtil.generatedHandler;
 //TODO use <details> for accordion items
 //TODO could use <button> with form submission for the home button to prevent link dragging? not very idiomatic
 //TODO create Handler that handles language-switch POST requests and wrap newPath call
+//TODO use Link header to prefetch stylesheet and font, add parameter to doGetHtmlStreamed
 
 public class RunSite {
 	
 	public static void main(String[] args) throws Exception {
-		var server = new RunSite(Path.of(System.getProperty("net.ritzow.certs")),
-			System.getProperty("net.ritzow.pass"));
+		var server = new RunSite(
+			InetAddress.getByName("::1"), false,
+			Path.of(System.getProperty("net.ritzow.certs")),
+			System.getProperty("net.ritzow.pass")
+		);
 		server.start();
 		server.await();
 		server.stop();
 	}
 	
-	public static RunSite startServer(Path keyStore, String keyStorePassword) throws Exception {
-		var server = new RunSite(keyStore, keyStorePassword);
+	public static RunSite startServer(InetAddress bind, boolean requireSni, Path keyStore, String keyStorePassword) throws Exception {
+		var server = new RunSite(bind, requireSni, keyStore, keyStorePassword);
 		server.start();
 		return server;
 	}
 	
 	private final Server server;
-	private final ContentManager CONTENT_MANAGER;
-	private final Translator<String> TRANSLATIONS;
+	private final ContentManager cm;
+	private final Translator<String> translator;
 	
 	private final CountDownLatch shutdownLock = new CountDownLatch(1);
 	
-	private RunSite(Path keyStore, String keyStorePassword) throws
+	private RunSite(InetAddress bind, boolean requireSni, Path keyStore, String keyStorePassword) throws
 			CertificateException,
 			IOException,
 			KeyStoreException,
 			NoSuchAlgorithmException,
 			SQLException {
-		server = createServer(keyStore, keyStorePassword);
-		CONTENT_MANAGER = ContentManager.ofMemoryDatabase();
-		ContentUtil.genArticles(CONTENT_MANAGER);
-		TRANSLATIONS = Translator.ofProperties(properties("/lang/welcome.properties"));
+		server = createServer(bind, requireSni, keyStore, keyStorePassword);
+		cm = ContentManager.ofMemoryDatabase();
+		ContentUtil.genArticles(cm);
+		translator = Translator.ofProperties(properties("/lang/welcome.properties"));
 	}
 	
 	public void start() throws Exception {
@@ -96,14 +103,14 @@ public class RunSite {
 	
 	public void stop() throws Exception {
 		server.stop();
-		CONTENT_MANAGER.shutdown();
+		cm.shutdown();
 		server.join();
 	}
 	
-	public Server createServer(Path keyStore, String keyStorePassword)
+	public Server createServer(InetAddress bind, boolean requireSni, Path keyStore, String keyStorePassword)
 			throws CertificateException, IOException, KeyStoreException, NoSuchAlgorithmException {
 		return JettySetup.newStandardServer(
-			keyStore, keyStorePassword,
+			bind, requireSni, keyStore, keyStorePassword,
 			newPath(
 				generatedHandler(this::mainPageGenerator),
 				entry("/article", generatedHandler(this::articlePageProcessor)),
@@ -112,24 +119,11 @@ public class RunSite {
 				entry("/opensearch", new StaticContentHandler(open("/xml/opensearch.xml"),
 					"application/opensearchdescription+xml")),
 				entry("/style.css", new StaticContentHandler(open("/css/global.css"), "text/css")),
-				entry("/icon.svg", new StaticContentHandler(open("/image/icon.svg"), "image/svg+xml"))
+				entry("/icon.svg", new StaticContentHandler(open("/image/icon.svg"), "image/svg+xml")),
+				entry("/opensans.ttf", new StaticContentHandler(open("/font/OpenSans-Regular.ttf"), "font/ttf"))
 			),
-			generatedHandler(RunSite::errorGenerator)
+			generatedHandler(this::errorGenerator)
 		);
-	}
-	
-	private static void processSql() {
-		//TODO create a webpage to submit sql commands
-//		try(var reader = new InputStreamReader(System.in, StandardCharsets.UTF_8)) {
-//			try(var db = cm.getConnection()) {
-//				/* TODO set interactive to false and create a loop, create a StringReader after creating a query string */
-//				SqlFile file = new SqlFile(reader, "<stdin>", System.out, "UTF-8", true, (URL)null);
-//				file.setConnection(db);
-//				file.execute();
-//			}
-//		} catch(IOException | SQLException e) {
-//			e.printStackTrace();
-//		}
 	}
 	
 	@RequiresNamedHtml({"full-content", "time", "heap"})
@@ -171,11 +165,11 @@ public class RunSite {
 	}
 	
 	public Locale pageLocale(Request request) throws SQLException {
-		return HttpUser.bestLocale(request, CONTENT_MANAGER.getSupportedLocales());
+		return HttpUser.bestLocale(request, cm.getSupportedLocales());
 	}
 	
 	private void shutdownPage(Request request) {
-		doGetHtmlStreamed(request, HttpStatus.OK_200,
+		doGetHtmlStreamed(request, HttpStatus.OK_200, List.of(),
 			html().with(
 				body().with(
 					p("Shutting down...")
@@ -223,20 +217,22 @@ public class RunSite {
 		return dynamic(CONTENT_HTML, Map.of("header-content", header, "content", mainContent));
 	}
 	
+	private static final DomContent LOGO_HTML = logo("/icon.svg");
+	
 	private DomContent header(Request request) throws SQLException {
-		List<Locale> locales = CONTENT_MANAGER.getSupportedLocales();
+		List<Locale> locales = cm.getSupportedLocales();
 		Locale bestCurrent = HttpUser.bestLocale(request, locales);
 		return each(
-			logo("/icon.svg"),
+			LOGO_HTML,
 			form()
 				.withClasses("lang-selector")
-				.withCondAutocomplete(false)
+				.attr("autocomplete", "off")
 				.withMethod("post")
-				.withAction(request.getHttpURI().getDecodedPath())
 				.withEnctype("multipart/form-data")
 				.with(
-					each(locales.stream().map(locale -> langButton(locale, bestCurrent)))
-				)
+					locales.stream().map(locale -> langButton(locale, bestCurrent))
+				),
+			loginForm()
 		);
 	}
 	
@@ -255,18 +251,29 @@ public class RunSite {
 		return button;
 	}
 	
-	private void doPostLang(Request request) {
+	/* Cool checkboxes https://stackoverflow.com/questions/4148499/how-to-style-a-checkbox-using-css */
+	/* Custom checkbox https://stackoverflow.com/questions/44299150/set-text-inside-a-check-box/44299305 */
+	private static DomContent loginForm() {
+		return form().withClass("login-form").withMethod("post").withEnctype("multipart/form-data").with(
+			/* TODO the username should be prefilled in "value" on the next page if the user clicks "Sign up" */
+			input().withType("text").attr("autocomplete", "username").withPlaceholder("Username"),
+			input().withType("password").attr("autocomplete", "current-password").withPlaceholder("Password"),
+			label(input().withType("checkbox"), rawHtml("Remember me")),
+			button("Login"),
+			button("Sign up")
+		);
+	}
+	
+	private static void doProcessForms(Request request, BiConsumer<String, ByteBuffer> action) {
 		HttpField contentType = request.getHttpFields().getField(HttpHeader.CONTENT_TYPE);
 		Objects.requireNonNull(contentType, "No content type specified by client");
 		String contentTypeStr = contentType.getValue();
 		var map = new HashMap<String, String>(1);
 		HttpField.getValueParameters(contentTypeStr, map);
 		String boundary = map.get("boundary");
-		
 		try {
-			var handler = new MultiPartParser.Handler() {
+			parse(request.getHttpInput(), boundary, new Handler() {
 				private String name;
-				
 				@Override
 				public void parsedField(String name, String value) {
 					if(name.equalsIgnoreCase("Content-Disposition")) {
@@ -275,22 +282,13 @@ public class RunSite {
 						if(!disposition.equals("form-data")) {
 							throw new RuntimeException("received non-form-data");
 						}
-						/* TODO validate "name" field to make sure it is proper locale */
 						this.name = map.get("name");
 					}
 				}
 				
 				@Override
 				public boolean content(ByteBuffer item, boolean last) {
-					switch(name) {
-						case "lang-select" -> {
-							/* Skip over 0-length separator */
-							if(item.remaining() > 0) {
-								storeLocale(request, item);
-							}
-						}
-						default -> throw new RuntimeException("what???");
-					}
+					if(item.hasRemaining()) action.accept(name, item);
 					return false;
 				}
 				
@@ -298,14 +296,15 @@ public class RunSite {
 				public void earlyEOF() {
 					throw new RuntimeException("early EOF");
 				}
-			};
-			
-			/* Read and parse data in chunks */
-			parse(new MultiPartParser(handler, boundary), request.getHttpInput());
+			});
 		} catch(IOException e) {
 			throw new UncheckedIOException(e);
 		}
-		
+	}
+	
+	/** Respond to {@code request} with a 303 redirect to the page, and set the language. **/
+	private void processLangForm(Request request, ByteBuffer content) {
+		storeLocale(request, content);
 		request.getResponse().setHeader(HttpHeader.LOCATION, request.getHttpURI().getDecodedPath());
 		request.getResponse().setStatus(HttpStatus.SEE_OTHER_303);
 		request.setHandled(true);
@@ -313,22 +312,32 @@ public class RunSite {
 	
 	private void storeLocale(Request request, ByteBuffer content) {
 		try {
-			String locale = StandardCharsets.UTF_8.newDecoder()
-				.onMalformedInput(CodingErrorAction.REPORT)
-				.onUnmappableCharacter(CodingErrorAction.REPORT)
-				.decode(content)
-				.toString();
+			String locale = utf8ToString(content);
 			Locale selected = Locale.forLanguageTag(locale);
-			if(CONTENT_MANAGER.getSupportedLocales().stream().noneMatch(selected::equals)) {
+			if(cm.getSupportedLocales().stream().noneMatch(selected::equals)) {
 				throw new RuntimeException("Invalid selected locale \"" + locale + "\"");
 			}
 			HttpUser.session(request).locale(selected);
-		} catch(CharacterCodingException | SQLException e) {
+		} catch(SQLException e) {
 			throw new RuntimeException(e);
 		}
 	}
 	
-	private static void parse(MultiPartParser parser, HttpInput in) throws IOException {
+	private static String utf8ToString(ByteBuffer content) {
+		try {
+			return StandardCharsets.UTF_8.newDecoder()
+				.onMalformedInput(CodingErrorAction.REPORT)
+				.onUnmappableCharacter(CodingErrorAction.REPORT)
+				.decode(content)
+				.toString();
+		} catch(CharacterCodingException e) {
+			throw new RuntimeException(e);
+		}
+	}
+	
+	/** Parse {@code in} incrementally using the provided {@code handler}. **/
+	private static void parse(HttpInput in, String boundary, Handler handler) throws IOException {
+		MultiPartParser parser = new MultiPartParser(handler, boundary);
 		ByteBuffer buffer = null;
 		while(true) {
 			int available = in.available();
@@ -349,7 +358,12 @@ public class RunSite {
 	
 	private void mainPageGenerator(Request request) {
 		if(HttpMethod.fromString(request.getMethod()) == HttpMethod.POST) {
-			doPostLang(request);
+			doProcessForms(request, (name, content) -> {
+				switch(name) {
+					case "lang-select" -> processLangForm(request, content);
+					default -> throw new RuntimeException();
+				}
+			});
 			return;
 		}
 		
@@ -359,19 +373,19 @@ public class RunSite {
 		}
 		
 		try {
-			Locale bestLocale = HttpUser.bestLocale(request, CONTENT_MANAGER.getSupportedLocales());
-			doGetHtmlStreamed(request, HttpStatus.OK_200,
+			Locale bestLocale = HttpUser.bestLocale(request, cm.getSupportedLocales());
+			doGetHtmlStreamed(request, HttpStatus.OK_200, List.of(bestLocale),
 				context(
 					request,
-					TRANSLATIONS,
+					translator,
 					Map.of(),
 					page("RedNet", bestLocale,
 						content(
 							header(request),
-							div().withClass("article-list").with(
+							each(
 								h1(translated("greeting")).withClass("title"),
 								each(
-									CONTENT_MANAGER.getArticlesForLocale(bestLocale).stream().map(
+									cm.getArticlesForLocale(bestLocale).stream().map(
 										article3 -> articleBox(article3.title(), "/article/" + article3.urlname())
 									)
 								)
@@ -386,64 +400,96 @@ public class RunSite {
 	}
 	
 	private void uploadGenerator(Request request) throws SQLException {
-		if(HttpMethod.fromString(request.getMethod()) == HttpMethod.POST) {
-			throw new RuntimeException("Not implemented");
+		switch(HttpMethod.fromString(request.getMethod())) {
+			case GET, HEAD -> {
+				Locale locale = HttpUser.bestLocale(request, cm.getSupportedLocales());
+				
+				doGetHtmlStreamed(request, HttpStatus.OK_200, List.of(locale),
+					context(request, translator, Map.of(),
+						page("Upload", locale,
+							content(
+								header(request),
+								mainForm()
+							)
+						)
+					)
+				);
+			}
+			case POST -> {
+				String[] usernameHolder = new String[1];
+				byte[][] passwordHolder = new byte[1][];
+				byte[][] uploadHolder   = new byte[1][];
+				
+				doProcessForms(request, (name, content) -> {
+					switch(name) {
+						case "lang-select" -> processLangForm(request, content);
+						case "username" -> usernameHolder[0] = utf8ToString(content);
+						case "password" -> content.get(passwordHolder[0] = new byte[content.remaining()]);
+						case "upload" -> content.get(uploadHolder[0] = new byte[content.remaining()]);
+						case "comment" -> {}
+						default -> throw new RuntimeException("Unknown form field \"" + name + "\"");
+					}
+				});
+
+				try {
+					var locale = HttpUser.bestLocale(request, cm.getSupportedLocales());
+					if(usernameHolder[0] != null) {
+						doGetHtmlStreamed(request, HttpStatus.OK_200, List.of(locale),
+							context(request, translator, Map.of(),
+								page("Upload", locale,
+									content(
+										header(request),
+										p(usernameHolder[0] != null ? usernameHolder[0] : "No username provided")
+									)
+								)
+							)
+						);
+					} else {
+						doGetHtmlStreamed(request, HttpStatus.OK_200, List.of(locale),
+							context(request, translator, Map.of(),
+								page("Upload", locale,
+									content(
+										header(request),
+										mainForm()
+									)
+								)
+							)
+						);
+					}
+				} catch(SQLException e) {
+					throw new RuntimeException(e);
+				}
+			}
+			default -> throw new RuntimeException();
 		}
-		
-		if(StaticPathHandler.peekComponent(request).isPresent()) {
-			doGeneric404(request);
-			return;
-		}
-		
-		Locale locale = HttpUser.bestLocale(request, CONTENT_MANAGER.getSupportedLocales());
-		
-		throw new UnsupportedOperationException("not implemented");
-		
-//		doGetHtmlStreamed(request, HttpStatus.OK_200, page("RedNet", locale),
-//			entry("full-content",
-//				CONTENT_HTML
-//			),
-//			entry("header-content",
-//				header(request)
-//			),
-//			entry("content",
-//				mainForm()
-//			)
-//		);
 	}
 	
 	private void articlePageProcessor(Request request) throws SQLException, IOException {
 		if(HttpMethod.fromString(request.getMethod()) == HttpMethod.POST) {
-			doPostLang(request);
+			doProcessForms(request, (name, content) -> {
+				switch(name) {
+					case "lang-select" -> processLangForm(request, content);
+					default -> throw new RuntimeException();
+				}
+			});
 			return;
 		}
 		
 		Optional<String> name = StaticPathHandler.peekComponent(request);
-		Locale mainLocale = HttpUser.bestLocale(request, CONTENT_MANAGER.getSupportedLocales());
+		Locale mainLocale = HttpUser.bestLocale(request, cm.getSupportedLocales());
 		
 		//TODO make sure there isn't an extra component in the path
 		
 		if(name.isEmpty()) {
-			doGetHtmlStreamed(request, HttpStatus.NOT_FOUND_404,
-				context(request, TRANSLATIONS, Map.of(),
-					page("Error", mainLocale,
-						mainBox(
-							p("Please specify an article URL component: ").with(
-								span(request.getHttpURI().toURI().normalize() + "<article-path>")
-							),
-							a("Go home").withHref("/")
-						)
-					)
-				)
-			);
+			doWrongArticlePath(request, mainLocale);
 			return;
 		}
 		
 		String urlname = name.get();
-		List<Locale> supported = CONTENT_MANAGER.getArticleLocales(urlname);
+		List<Locale> supported = cm.getArticleLocales(urlname);
 		
 		if(supported.isEmpty()) {
-			doGetHtmlStreamed(request, HttpStatus.NOT_FOUND_404,
+			doGetHtmlStreamed(request, HttpStatus.NOT_FOUND_404, List.of(mainLocale),
 				page("Error", mainLocale,
 					content(
 						header(request),
@@ -455,36 +501,30 @@ public class RunSite {
 		}
 		
 		Locale articleLocale = HttpUser.bestLocale(request, supported);
-		Optional<Article<MarkdownContent>> article = CONTENT_MANAGER.getLatestArticle(urlname, articleLocale, reader -> {
-			try {
-				return new MarkdownContent(reader);
-			} catch(IOException e) {
-				throw new UncheckedIOException(e);
-			}
-		});
+		Optional<Article<MarkdownContent>> article = cm.getLatestArticle(urlname, articleLocale, MarkdownContent::new);
 		
 		if(article.isEmpty()) {
-			doGetHtmlStreamed(request, HttpStatus.NOT_FOUND_404, page("Error", mainLocale,
-				content(
-					header(request),
-					p("No such article " + urlname)
+			doGetHtmlStreamed(request, HttpStatus.NOT_FOUND_404, List.of(mainLocale, articleLocale),
+				page("Error", mainLocale,
+					content(
+						header(request),
+						p("No such article " + urlname)
+					)
 				)
-			));
+			);
 			return;
 		}
 		
-		doGetHtmlStreamed(request, HttpStatus.OK_200,
-			context(
-				request,
-				TRANSLATIONS,
-				Map.of(),
+		doGetHtmlStreamed(request, HttpStatus.OK_200, List.of(mainLocale),
+			context(request, translator, Map.of(),
 				page(article.get().title(), mainLocale,
 					content(
 						header(request),
 						TagCreator.main().withLang(articleLocale.toLanguageTag()).with(
 							article(
 								h1(article.get().title()).withClass("title-article"),
-								articleLocale.equals(mainLocale) ? null : h3(articleLocale.getDisplayName(mainLocale)).withClass("article-lang"),
+								articleLocale.equals(mainLocale) ? null :
+									h3(articleLocale.getDisplayName(mainLocale)).withClass("article-lang"),
 								div().withClass("markdown").with(article.get().content())
 							)
 						)
@@ -494,24 +534,42 @@ public class RunSite {
 		);
 	}
 	
-	//TODO standardize error page
-	private static void doGeneric404(Request request) {
-		doGetHtmlStreamed(request, HttpStatus.NOT_FOUND_404,
-			page("Error", Locale.forLanguageTag("en-US"),
-				mainBox(
-					p("\"" + request.getHttpURI() + "\" does not exist."),
-					a("Go home").withHref("/")
+	private void doWrongArticlePath(Request request, Locale mainLocale) {
+		doGetHtmlStreamed(request, HttpStatus.NOT_FOUND_404, List.of(mainLocale),
+			context(request, translator, Map.of(),
+				page("Error", mainLocale,
+					mainBox(
+						p("Please specify an article URL component: ").with(
+							span(request.getHttpURI().toURI().normalize() + "<article-path>")
+						),
+						a("Go home").withHref("/")
+					)
 				)
 			)
 		);
 	}
 	
-	private static void errorGenerator(Request request) {
-		doGetHtmlStreamed(request, HttpStatus.INTERNAL_SERVER_ERROR_500,
-			page("Error", Locale.forLanguageTag("en-US"),
-				mainBox(
-					p("Sorry, there was an unexpected error!"),
-					a("Go home").withHref("/")
+	private void doGeneric404(Request request) {
+		doGetHtmlStreamed(request, HttpStatus.NOT_FOUND_404, List.of(),
+			context(request, translator, Map.of(),
+				page("Error", Locale.forLanguageTag("en-US"),
+					mainBox(
+						p("\"" + request.getHttpURI() + "\" does not exist."),
+						a("Go home").withHref("/")
+					)
+				)
+			)
+		);
+	}
+	
+	private void errorGenerator(Request request) {
+		doGetHtmlStreamed(request, HttpStatus.INTERNAL_SERVER_ERROR_500, List.of(),
+			context(request, translator, Map.of(),
+				page("Error", Locale.forLanguageTag("en-US"),
+					mainBox(
+						p("Sorry, there was an unexpected error!"),
+						a("Go home").withHref("/")
+					)
 				)
 			)
 		);

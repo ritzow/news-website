@@ -21,16 +21,11 @@ public class PageTemplate {
 	// cached UnescapedText depending on the value of 'model'.
 	/** Pre-render child elements to a string instead of traversing DomContent **/
 	public static DomContent freeze(DomContent... content) {
-		
-		var html = FlatHtml.inMemory();
-		for(var c : content) {
-			try {
-				c.render(html);
-			} catch(IOException e) {
-				throw new UncheckedIOException(e);
-			}
+		try {
+			return rawHtml(each(content).render(FlatHtml.inMemory()).toString());
+		} catch(IOException e) {
+			throw new UncheckedIOException(e);
 		}
-		return rawHtml(html.output().toString());
 	}
 	
 	/** Initialize a context for dynamic HTML elements **/
@@ -150,37 +145,41 @@ public class PageTemplate {
 	}
 	
 	public static FormTag mainForm() {
-		return form().withId("main").withAction("/form/main")
-			.withMethod("POST").withEnctype("multipart/form-data").with(
+		return form()
+			.withId("main")
+			//.withAction("/upload")
+			.withMethod("post")
+			.withEnctype("multipart/form-data").with(
 			p("Username:"),
 			input()
 				.withCondRequired(true)
 				.withClass("form-element")
 				.withType("text")
-				.withId("username")
+				//.withId("username")
+				.withName("username")
 				.withPlaceholder("Username"),
 			p("Password:"),
 			input()
 				.withCondRequired(true)
 				.withClass("form-element")
 				.withType("password")
-				.withId("password")
+				//.withId("password")
+				.withName("password")
 				.withPlaceholder("Password"),
 			p().with(
 				label("File upload: ").withFor("upload-field"),
 				input()
 					.withType("file")
-					.withId("upload-field")
+					.withName("upload")
+					//.withId("upload-field")
 			),
 			p("Echo:"),
 			textarea()
 				.withClass("form-element")
-				.withId("comment")
+				//.withId("comment")
+				.withName("comment")
 				.withPlaceholder("Type some text here."),
-			p(input().withType("submit")),
-			a(
-				button("This is a link button")
-			).withHref("blah")
+			p(input().withType("submit"))
 		);
 	}
 }
