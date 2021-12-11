@@ -10,7 +10,7 @@ Embedded Jetty server using HTML generation and a (currently in-memory) database
 
 ## Software Used
 
-### [Gradle](https://docs.gradle.org/current/userguide/plugin_reference.html)
+### [Gradle](https://docs.gradle.org/7.3.1/userguide/userguide.html)
 
 For building, testing, and r**u**nning. Follows standard build system structure. The build script requires a Java .properties file `/news-site/project.properties` with the following properties:
 
