@@ -1,0 +1,3 @@
+# "Jetstart" Support Code
+
+This provides some basic semi-"website agnostic" code. Mainly for setting up all the Jetty server parameters to provide a regular experience in a web browser i.e. insecure HTTP/1.1 on port 80 and secure HTTP 1.1/2 on port 443, with a secure redirect, session cookie management, content gzip compression, and (always-on) request logging, all provided by Jetty classes, used by `JettySetup`. `StaticPathHandler` allows for separate Handler objects for subpaths, and the ability to organize page handling by subpath. Some of this could probably be replaced the Javalin library, but Javalin does not automatically set up the proper encryption and redirect functionality anyways.
