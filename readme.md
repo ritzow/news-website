@@ -4,15 +4,15 @@ Embedded Jetty server using HTML generation and a (currently in-memory) database
 
 ## Project Structure
 
-`/news-site` contains most of the code.
+[`/news-site`](news-site) contains most of the code.
 
-`/jetstart` contains some base code, this was originally intended to be the "website agnostic" part of the code, but I put most code in `/news-site`.
+[`/jetstart`](jetstart) contains some base code, this was originally intended to be the "website agnostic" part of the code, but I put most code in `/news-site`.
 
 ## Software Used
 
-### Gradle
+### [Gradle](https://docs.gradle.org/current/userguide/plugin_reference.html)
 
-For building, testing, and running. Follows standard build system structure. The build script requires a Java .properties file `/news-site/project.properties` with the following properties:
+For building, testing, and r**u**nning. Follows standard build system structure. The build script requires a Java .properties file `/news-site/project.properties` with the following properties:
 
 ```properties
 # Absolute path to a Java-supported keystore, i.e. a .p12 file
@@ -25,34 +25,34 @@ sass.path = <path>
 inkscape.path = <path>
 ```
 
-### Jetty Embedded HTTP Server
+### [Jetty Embedded HTTP Server](https://www.eclipse.org/jetty/documentation/jetty-11/programming-guide/index.html)
 
 For HTTP 1.1/2 web server functionality
 
-### j2html
+### [j2html](https://j2html.com/)
 
 For dynamically generating all HTML served.
 
-### HyperSQL (HSQLDB)
+### [HyperSQL (HSQLDB)](http://hsqldb.org/)
 
 For article storage.
 
-### Hikari Connection Pool
+### [Hikari Connection Pool](https://github.com/brettwooldridge/HikariCP)
 
 For proper database functionality in application threads started by Jetty.
 
-### commonmark-java
+### [commonmark-java](https://github.com/commonmark/commonmark-java)
 
 For parsing article Markdown and converting it to HTML.
 
-### JUnit
+### [JUnit](https://junit.org/junit5/docs/current/user-guide/)
 
 For testing (not implemented).
 
-### Jetty Load Generator
+### [Jetty Load Generator](https://github.com/jetty-project/jetty-load-generator)
 
 For testing (not implemented, need to work around certificate issues for testing).
 
-### SLF4J
+### [SLF4J](http://www.slf4j.org/)
 
 Used by libraries for logging.
