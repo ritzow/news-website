@@ -5,12 +5,7 @@ import j2html.tags.DomContent;
 import j2html.tags.specialized.BodyTag;
 import j2html.tags.specialized.ButtonTag;
 import java.io.IOException;
-import java.io.UncheckedIOException;
 import java.net.InetAddress;
-import java.nio.ByteBuffer;
-import java.nio.charset.CharacterCodingException;
-import java.nio.charset.CodingErrorAction;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.security.KeyStoreException;
 import java.security.NoSuchAlgorithmException;
@@ -22,20 +17,13 @@ import java.time.format.DateTimeFormatter;
 import java.time.format.FormatStyle;
 import java.util.*;
 import java.util.concurrent.CountDownLatch;
-import java.util.function.Function;
-import java.util.random.RandomGenerator;
 import net.ritzow.jetstart.JettySetup;
 import net.ritzow.jetstart.StaticPathHandler;
 import net.ritzow.jetstart.Translator;
 import net.ritzow.news.ContentManager.Article;
-import net.ritzow.news.Forms.FieldReader;
-import org.eclipse.jetty.http.HttpField;
 import org.eclipse.jetty.http.HttpHeader;
 import org.eclipse.jetty.http.HttpMethod;
 import org.eclipse.jetty.http.HttpStatus;
-import org.eclipse.jetty.server.HttpInput;
-import org.eclipse.jetty.server.MultiPartParser;
-import org.eclipse.jetty.server.MultiPartParser.Handler;
 import org.eclipse.jetty.server.Request;
 import org.eclipse.jetty.server.Server;
 import org.eclipse.jetty.util.Callback;
@@ -43,6 +31,7 @@ import org.eclipse.jetty.util.Callback;
 import static j2html.TagCreator.*;
 import static java.util.Map.entry;
 import static net.ritzow.jetstart.JettyHandlers.newPath;
+import static net.ritzow.news.Forms.*;
 import static net.ritzow.news.PageTemplate.*;
 import static net.ritzow.news.ResourceUtil.open;
 import static net.ritzow.news.ResourceUtil.properties;
@@ -266,65 +255,6 @@ public class RunSite {
 		);
 	}
 	
-	private static <T> Function<String, Optional<? extends T>> doProcessForms(Request request,
-			Function<String, FieldReader<? extends T>> actions) {
-		HttpField contentType = request.getHttpFields().getField(HttpHeader.CONTENT_TYPE);
-		Objects.requireNonNull(contentType, "No content type specified by client");
-		String contentTypeStr = contentType.getValue();
-		var map = new HashMap<String, String>(1);
-		HttpField.getValueParameters(contentTypeStr, map);
-		String boundary = map.get("boundary");
-		try {
-			Map<String, FieldReader<? extends T>> storage = new TreeMap<>();
-			parse(request.getHttpInput(), boundary, new Handler() {
-				private FieldReader<? extends T> reader;
-				private String name, filename;
-				
-				@Override
-				public void parsedField(String name, String value) {
-					if(name.equalsIgnoreCase("Content-Disposition")) {
-						var map = new TreeMap<String, String>();
-						String disposition = HttpField.getValueParameters(value, map);
-						if(!disposition.equals("form-data")) {
-							/* Only form-data is valid https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Disposition */
-							throw new RuntimeException("received non-form-data");
-						}
-						
-						this.name = map.get("name");
-						this.filename = map.get("filename");
-						reader = null;
-					}
-				}
-				
-				@Override
-				public boolean content(ByteBuffer item, boolean last) {
-					if(reader == null) {
-						reader = Objects.requireNonNull(actions.apply(name));
-						/* Overrride existing values */
-						storage.put(name, reader);
-					}
-					if(item.hasRemaining()) reader.read(item, last, filename);
-					return false;
-				}
-				
-				@Override
-				public void earlyEOF() {
-					throw new RuntimeException("early EOF");
-				}
-			});
-			return name -> {
-				var field = storage.get(name);
-				if(field == null) {
-					return Optional.empty();
-				} else {
-					return Optional.ofNullable(field.result());
-				}
-			};
-		} catch(IOException e) {
-			throw new UncheckedIOException(e);
-		}
-	}
-	
 	/** Respond to {@code request} with a 303 redirect to the page, and set the language. **/
 	private void processLangForm(Request request, String langTag) {
 		storeLocale(request, langTag);
@@ -343,31 +273,10 @@ public class RunSite {
 		}
 	}
 	
-	/** Parse {@code in} incrementally using the provided {@code handler}. **/
-	private static void parse(HttpInput in, String boundary, Handler handler) throws IOException {
-		MultiPartParser parser = new MultiPartParser(handler, boundary);
-		ByteBuffer buffer = null;
-		while(true) {
-			int available = in.available();
-			if(buffer == null) {
-				buffer = ByteBuffer.wrap(new byte[Math.max(available, 2048)]);
-			} else if(available > buffer.capacity()) {
-				buffer = ByteBuffer.wrap(new byte[available]);
-			}
-			int count = in.read(buffer.array());
-			if(count != -1) {
-				parser.parse(buffer.clear().limit(count), false);
-			} else {
-				parser.parse(buffer.clear().limit(0), true);
-				break;
-			}
-		}
-	}
-	
 	private void mainPageGenerator(Request request) {
 		if(HttpMethod.fromString(request.getMethod()) == HttpMethod.POST) {
 			var result = doProcessForms(request, name -> switch(name) {
-				case "lang-select" -> Forms.stringReader();
+				case "lang-select" -> stringReader();
 				default -> throw new RuntimeException("Unknown form field \"" + name + "\"");
 			});
 			result.apply("lang-select").ifPresent(lang -> processLangForm(request, lang));
@@ -424,10 +333,10 @@ public class RunSite {
 			}
 			case POST -> {
 				var result = doProcessForms(request, name -> switch(name) {
-					case "lang-select", "username", "comment" -> Forms.stringReader();
-					case "password" -> Forms.secretBytesReader(); //content.get(passwordHolder[0] = new byte[content.remaining()]);
-					case "upload" -> Forms.fileReader(); //content.get(uploadHolder[0] = new byte[content.remaining()]);
-					case "login-action" -> Forms.stringReader();
+					case "lang-select", "username", "comment" -> stringReader();
+					case "password" -> secretBytesReader(); //content.get(passwordHolder[0] = new byte[content.remaining()]);
+					case "upload" -> fileReader(); //content.get(uploadHolder[0] = new byte[content.remaining()]);
+					case "login-action" -> stringReader();
 					default -> throw new RuntimeException("Unknown form field \"" + name + "\"");
 				});
 				
@@ -475,7 +384,7 @@ public class RunSite {
 	private void articlePageProcessor(Request request) throws SQLException, IOException {
 		if(HttpMethod.fromString(request.getMethod()) == HttpMethod.POST) {
 			var result = doProcessForms(request, name -> switch(name) {
-				case "lang-select" -> Forms.stringReader();
+				case "lang-select" -> stringReader();
 				default -> throw new RuntimeException();
 			});
 			result.apply("lang-select").ifPresent(lang -> processLangForm(request, lang));

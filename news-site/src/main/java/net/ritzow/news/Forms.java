@@ -7,39 +7,104 @@ import java.nio.ByteBuffer;
 import java.nio.charset.CharacterCodingException;
 import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
-import java.util.Arrays;
-import java.util.Map;
+import java.util.*;
 import java.util.Map.Entry;
-import java.util.Optional;
+import java.util.function.Function;
+import org.eclipse.jetty.http.HttpField;
+import org.eclipse.jetty.http.HttpHeader;
 import org.eclipse.jetty.io.ByteBufferOutputStream2;
+import org.eclipse.jetty.server.HttpInput;
+import org.eclipse.jetty.server.MultiPartParser;
+import org.eclipse.jetty.server.MultiPartParser.Handler;
+import org.eclipse.jetty.server.Request;
 
 public class Forms {
-
+	static <T> Function<String, Optional<? extends T>> doProcessForms(Request request,
+		Function<String, FieldReader<? extends T>> actions) {
+	HttpField contentType = request.getHttpFields().getField(HttpHeader.CONTENT_TYPE);
+	Objects.requireNonNull(contentType, "No content type specified by client");
+	String contentTypeStr = contentType.getValue();
+	var map = new HashMap<String, String>(1);
+	HttpField.getValueParameters(contentTypeStr, map);
+	String boundary = map.get("boundary");
+	try {
+		Map<String, FieldReader<? extends T>> storage = new TreeMap<>();
+		parse(request.getHttpInput(), boundary, new Handler() {
+			private FieldReader<? extends T> reader;
+			private String name, filename;
+			
+			@Override
+			public void parsedField(String name, String value) {
+				if(name.equalsIgnoreCase("Content-Disposition")) {
+					var map = new TreeMap<String, String>();
+					String disposition = HttpField.getValueParameters(value, map);
+					if(!disposition.equals("form-data")) {
+						/* Only form-data is valid https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Disposition */
+						throw new RuntimeException("received non-form-data");
+					}
+					
+					this.name = map.get("name");
+					this.filename = map.get("filename");
+					reader = null;
+				}
+			}
+			
+			@Override
+			public boolean content(ByteBuffer item, boolean last) {
+				if(reader == null) {
+					reader = Objects.requireNonNull(actions.apply(name));
+					/* Overrride existing values */
+					storage.put(name, reader);
+				}
+				if(item.hasRemaining()) reader.read(item, last, filename);
+				return false;
+			}
+			
+			@Override
+			public void earlyEOF() {
+				throw new RuntimeException("early EOF");
+			}
+		});
+		return name -> {
+			var field = storage.get(name);
+			if(field == null) {
+				return Optional.empty();
+			} else {
+				return Optional.ofNullable(field.result());
+			}
+		};
+	} catch(IOException e) {
+		throw new UncheckedIOException(e);
+	}
+}
+	
+	/** Parse {@code in} incrementally using the provided {@code handler}. **/
+	private static void parse(HttpInput in, String boundary, Handler handler) throws IOException {
+		MultiPartParser parser = new MultiPartParser(handler, boundary);
+		ByteBuffer buffer = null;
+		while(true) {
+			int available = in.available();
+			if(buffer == null) {
+				buffer = ByteBuffer.wrap(new byte[Math.max(available, 2048)]);
+			} else if(available > buffer.capacity()) {
+				buffer = ByteBuffer.wrap(new byte[available]);
+			}
+			int count = in.read(buffer.array());
+			if(count != -1) {
+				parser.parse(buffer.clear().limit(count), false);
+			} else {
+				parser.parse(buffer.clear().limit(0), true);
+				break;
+			}
+		}
+	}
+	
 	//TODO need to be able to: combine name sets, have reusable name sets, have reusable input stream aggregation.
 	
 	public interface FieldReader<T> {
 		void read(ByteBuffer item, boolean last, String filename);
 		T result();
 	}
-	
-//	public static class FormStorage {
-//		/* Use a tree map because the data is very small, hashing may take up too much time */
-//		private final TreeMap<String, FieldReader> data;
-//
-//		private FormStorage() {
-//			data = new TreeMap<>();
-//		}
-//
-//		public
-//
-//		public <T> T get(String name) {
-//			return (T)data.get(name).result();
-//		}
-//	}
-
-//	public static FormStorage newStorage() {
-//		return new FormStorage();
-//	}
 	
 	public static FieldReader<String> stringReader() {
 		return new FieldReader<>() {
