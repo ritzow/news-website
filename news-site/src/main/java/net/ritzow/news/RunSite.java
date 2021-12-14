@@ -22,11 +22,13 @@ import java.time.format.DateTimeFormatter;
 import java.time.format.FormatStyle;
 import java.util.*;
 import java.util.concurrent.CountDownLatch;
-import java.util.function.BiConsumer;
+import java.util.function.Function;
+import java.util.random.RandomGenerator;
 import net.ritzow.jetstart.JettySetup;
 import net.ritzow.jetstart.StaticPathHandler;
 import net.ritzow.jetstart.Translator;
 import net.ritzow.news.ContentManager.Article;
+import net.ritzow.news.Forms.FieldReader;
 import org.eclipse.jetty.http.HttpField;
 import org.eclipse.jetty.http.HttpHeader;
 import org.eclipse.jetty.http.HttpMethod;
@@ -240,7 +242,7 @@ public class RunSite {
 		var button = button()
 			.withType("submit")
 			.withName("lang-select")
-			.withValue(locale.toLanguageTag())
+			.withValue(locale.toLanguageTag() /*+ ContentUtil.generateGibberish(RandomGenerator.getDefault(), false, 1000, 10)*/)
 			.withClass("lang-button").with(
 				span(locale.getDisplayLanguage(locale))
 			);
@@ -256,15 +258,16 @@ public class RunSite {
 	private static DomContent loginForm() {
 		return form().withClass("login-form").withMethod("post").withEnctype("multipart/form-data").with(
 			/* TODO the username should be prefilled in "value" on the next page if the user clicks "Sign up" */
-			input().withType("text").attr("autocomplete", "username").withPlaceholder("Username"),
-			input().withType("password").attr("autocomplete", "current-password").withPlaceholder("Password"),
+			input().withName("username").withType("text").attr("autocomplete", "username").withPlaceholder("Username"),
+			input().withName("password").withType("password").attr("autocomplete", "current-password").withPlaceholder("Password"),
 			label(input().withType("checkbox"), rawHtml("Remember me")),
-			button("Login"),
-			button("Sign up")
+			button("Login").withName("login-action").withValue("login"),
+			button("Sign up").withName("login-action").withValue("signup")
 		);
 	}
 	
-	private static void doProcessForms(Request request, BiConsumer<String, ByteBuffer> action) {
+	private static <T> Function<String, Optional<? extends T>> doProcessForms(Request request,
+			Function<String, FieldReader<? extends T>> actions) {
 		HttpField contentType = request.getHttpFields().getField(HttpHeader.CONTENT_TYPE);
 		Objects.requireNonNull(contentType, "No content type specified by client");
 		String contentTypeStr = contentType.getValue();
@@ -272,23 +275,35 @@ public class RunSite {
 		HttpField.getValueParameters(contentTypeStr, map);
 		String boundary = map.get("boundary");
 		try {
+			Map<String, FieldReader<? extends T>> storage = new TreeMap<>();
 			parse(request.getHttpInput(), boundary, new Handler() {
-				private String name;
+				private FieldReader<? extends T> reader;
+				private String name, filename;
+				
 				@Override
 				public void parsedField(String name, String value) {
 					if(name.equalsIgnoreCase("Content-Disposition")) {
-						var map = new HashMap<String, String>(1);
+						var map = new TreeMap<String, String>();
 						String disposition = HttpField.getValueParameters(value, map);
 						if(!disposition.equals("form-data")) {
+							/* Only form-data is valid https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Disposition */
 							throw new RuntimeException("received non-form-data");
 						}
+						
 						this.name = map.get("name");
+						this.filename = map.get("filename");
+						reader = null;
 					}
 				}
 				
 				@Override
 				public boolean content(ByteBuffer item, boolean last) {
-					if(item.hasRemaining()) action.accept(name, item);
+					if(reader == null) {
+						reader = Objects.requireNonNull(actions.apply(name));
+						/* Overrride existing values */
+						storage.put(name, reader);
+					}
+					if(item.hasRemaining()) reader.read(item, last, filename);
 					return false;
 				}
 				
@@ -297,40 +312,33 @@ public class RunSite {
 					throw new RuntimeException("early EOF");
 				}
 			});
+			return name -> {
+				var field = storage.get(name);
+				if(field == null) {
+					return Optional.empty();
+				} else {
+					return Optional.ofNullable(field.result());
+				}
+			};
 		} catch(IOException e) {
 			throw new UncheckedIOException(e);
 		}
 	}
 	
 	/** Respond to {@code request} with a 303 redirect to the page, and set the language. **/
-	private void processLangForm(Request request, ByteBuffer content) {
-		storeLocale(request, content);
+	private void processLangForm(Request request, String langTag) {
+		storeLocale(request, langTag);
 		request.getResponse().setHeader(HttpHeader.LOCATION, request.getHttpURI().getDecodedPath());
 		request.getResponse().setStatus(HttpStatus.SEE_OTHER_303);
 		request.setHandled(true);
 	}
 	
-	private void storeLocale(Request request, ByteBuffer content) {
+	private void storeLocale(Request request, String languageTag) {
 		try {
-			String locale = utf8ToString(content);
-			Locale selected = Locale.forLanguageTag(locale);
-			if(cm.getSupportedLocales().stream().noneMatch(selected::equals)) {
-				throw new RuntimeException("Invalid selected locale \"" + locale + "\"");
-			}
-			HttpUser.session(request).locale(selected);
+			Locale selected = Locale.forLanguageTag(languageTag);
+			Optional<Locale> existing = cm.getSupportedLocales().stream().filter(selected::equals).findAny();
+			HttpUser.session(request).locale(existing.orElseThrow(() -> new RuntimeException("Invalid selected locale \"" + languageTag + "\"")));
 		} catch(SQLException e) {
-			throw new RuntimeException(e);
-		}
-	}
-	
-	private static String utf8ToString(ByteBuffer content) {
-		try {
-			return StandardCharsets.UTF_8.newDecoder()
-				.onMalformedInput(CodingErrorAction.REPORT)
-				.onUnmappableCharacter(CodingErrorAction.REPORT)
-				.decode(content)
-				.toString();
-		} catch(CharacterCodingException e) {
 			throw new RuntimeException(e);
 		}
 	}
@@ -358,12 +366,11 @@ public class RunSite {
 	
 	private void mainPageGenerator(Request request) {
 		if(HttpMethod.fromString(request.getMethod()) == HttpMethod.POST) {
-			doProcessForms(request, (name, content) -> {
-				switch(name) {
-					case "lang-select" -> processLangForm(request, content);
-					default -> throw new RuntimeException();
-				}
+			var result = doProcessForms(request, name -> switch(name) {
+				case "lang-select" -> Forms.stringReader();
+				default -> throw new RuntimeException("Unknown form field \"" + name + "\"");
 			});
+			result.apply("lang-select").ifPresent(lang -> processLangForm(request, lang));
 			return;
 		}
 		
@@ -416,62 +423,63 @@ public class RunSite {
 				);
 			}
 			case POST -> {
-				String[] usernameHolder = new String[1];
-				byte[][] passwordHolder = new byte[1][];
-				byte[][] uploadHolder   = new byte[1][];
-				
-				doProcessForms(request, (name, content) -> {
-					switch(name) {
-						case "lang-select" -> processLangForm(request, content);
-						case "username" -> usernameHolder[0] = utf8ToString(content);
-						case "password" -> content.get(passwordHolder[0] = new byte[content.remaining()]);
-						case "upload" -> content.get(uploadHolder[0] = new byte[content.remaining()]);
-						case "comment" -> {}
-						default -> throw new RuntimeException("Unknown form field \"" + name + "\"");
-					}
+				var result = doProcessForms(request, name -> switch(name) {
+					case "lang-select", "username", "comment" -> Forms.stringReader();
+					case "password" -> Forms.secretBytesReader(); //content.get(passwordHolder[0] = new byte[content.remaining()]);
+					case "upload" -> Forms.fileReader(); //content.get(uploadHolder[0] = new byte[content.remaining()]);
+					case "login-action" -> Forms.stringReader();
+					default -> throw new RuntimeException("Unknown form field \"" + name + "\"");
 				});
-
-				try {
-					var locale = HttpUser.bestLocale(request, cm.getSupportedLocales());
-					if(usernameHolder[0] != null) {
+				
+				result.apply("lang-select").ifPresent(lang -> processLangForm(request, (String)lang));
+				result.apply("password").ifPresent(data -> Arrays.fill((byte[])data, (byte)0));
+				
+				var locale = HttpUser.bestLocale(request, cm.getSupportedLocales());
+				
+				@SuppressWarnings("unchecked") Optional<String> loginAction = (Optional<String>)result.apply("login-action");
+				
+				switch(loginAction.orElse("other")) {
+					case "login" -> {
+						@SuppressWarnings("unchecked") Optional<String> username = (Optional<String>)result.apply("username");
 						doGetHtmlStreamed(request, HttpStatus.OK_200, List.of(locale),
 							context(request, translator, Map.of(),
 								page("Upload", locale,
 									content(
 										header(request),
-										p(usernameHolder[0] != null ? usernameHolder[0] : "No username provided")
-									)
-								)
-							)
-						);
-					} else {
-						doGetHtmlStreamed(request, HttpStatus.OK_200, List.of(locale),
-							context(request, translator, Map.of(),
-								page("Upload", locale,
-									content(
-										header(request),
-										mainForm()
+										p(username.orElse("No username provided"))
 									)
 								)
 							)
 						);
 					}
-				} catch(SQLException e) {
-					throw new RuntimeException(e);
+					
+					case "signup" -> throw new RuntimeException("not implemented");
+					
+					default -> doGetHtmlStreamed(request, HttpStatus.OK_200, List.of(locale),
+						context(request, translator, Map.of(),
+							page("Upload", locale,
+								content(
+									header(request),
+									mainForm()
+								)
+							)
+						)
+					);
 				}
 			}
-			default -> throw new RuntimeException();
+			
+			default -> throw new RuntimeException("Unsupported HTTP method");
 		}
 	}
 	
 	private void articlePageProcessor(Request request) throws SQLException, IOException {
 		if(HttpMethod.fromString(request.getMethod()) == HttpMethod.POST) {
-			doProcessForms(request, (name, content) -> {
-				switch(name) {
-					case "lang-select" -> processLangForm(request, content);
-					default -> throw new RuntimeException();
-				}
+			var result = doProcessForms(request, name -> switch(name) {
+				case "lang-select" -> Forms.stringReader();
+				default -> throw new RuntimeException();
 			});
+			result.apply("lang-select").ifPresent(lang -> processLangForm(request, lang));
+			//TODO also apply other stuff here
 			return;
 		}
 		
