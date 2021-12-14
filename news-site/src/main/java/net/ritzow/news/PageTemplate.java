@@ -4,11 +4,13 @@ import j2html.TagCreator;
 import j2html.rendering.FlatHtml;
 import j2html.rendering.HtmlBuilder;
 import j2html.tags.DomContent;
+import j2html.tags.Renderable;
 import j2html.tags.specialized.FormTag;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.stream.Stream;
 import net.ritzow.jetstart.Translator;
 import net.ritzow.news.RequestHandlerContent.RequestHandler;
 import org.eclipse.jetty.server.Request;
@@ -26,6 +28,19 @@ public class PageTemplate {
 		} catch(IOException e) {
 			throw new UncheckedIOException(e);
 		}
+	}
+	
+	public static <T extends Renderable> DomContent eachStreamed(Stream<T> content) {
+		return new DomContent() {
+			@Override
+			public <U extends Appendable> U render(HtmlBuilder<U> builder, Object model) throws IOException {
+				var it = content.iterator();
+				while(it.hasNext()) {
+					it.next().render(builder, model);
+				}
+				return builder.output();
+			}
+		};
 	}
 	
 	/** Initialize a context for dynamic HTML elements **/
@@ -82,6 +97,10 @@ public class PageTemplate {
 		
 //		return new RequestHandlerContent(state ->
 //			rawHtml(state.translator().forPrioritized(name, HttpUser.localesForUser(state.request()))));
+	}
+	
+	public static FormTag postForm() {
+		return form().withMethod("post").withEnctype("multipart/form-data");
 	}
 	
 	public static DomContent mainBox(DomContent... content) {

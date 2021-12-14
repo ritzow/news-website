@@ -215,11 +215,9 @@ public class RunSite {
 		Locale bestCurrent = HttpUser.bestLocale(request, locales);
 		return each(
 			LOGO_HTML,
-			form()
+			postForm()
 				.withClasses("lang-selector")
 				.attr("autocomplete", "off")
-				.withMethod("post")
-				.withEnctype("multipart/form-data")
 				.with(
 					locales.stream().map(locale -> langButton(locale, bestCurrent))
 				),
@@ -245,11 +243,11 @@ public class RunSite {
 	/* Cool checkboxes https://stackoverflow.com/questions/4148499/how-to-style-a-checkbox-using-css */
 	/* Custom checkbox https://stackoverflow.com/questions/44299150/set-text-inside-a-check-box/44299305 */
 	private static DomContent loginForm() {
-		return form().withClass("login-form").withMethod("post").withEnctype("multipart/form-data").with(
+		return postForm().withClass("login-form").with(
 			/* TODO the username should be prefilled in "value" on the next page if the user clicks "Sign up" */
 			input().withName("username").withType("text").attr("autocomplete", "username").withPlaceholder("Username"),
 			input().withName("password").withType("password").attr("autocomplete", "current-password").withPlaceholder("Password"),
-			label(input().withType("checkbox"), rawHtml("Remember me")),
+			label(input().withName("login-remember").withType("checkbox"), rawHtml("Remember me")),
 			button("Login").withName("login-action").withValue("login"),
 			button("Sign up").withName("login-action").withValue("signup")
 		);
@@ -291,52 +289,41 @@ public class RunSite {
 		try {
 			Locale bestLocale = HttpUser.bestLocale(request, cm.getSupportedLocales());
 			doGetHtmlStreamed(request, HttpStatus.OK_200, List.of(bestLocale),
-				context(
-					request,
-					translator,
-					Map.of(),
+				context(request, translator, Map.of(),
 					page("RedNet", bestLocale,
 						content(
 							header(request),
 							each(
 								h1(translated("greeting")).withClass("title"),
-								each(
-									cm.getArticlesForLocale(bestLocale).stream().map(
-										article3 -> articleBox(article3.title(), "/article/" + article3.urlname())
-									)
-								)
+								dynamic(state -> {
+									try {
+										return eachStreamed(
+											cm.getArticlesForLocale(bestLocale).stream().map(
+												article3 -> articleBox(article3.title(), "/article/" + article3.urlname())
+											)
+										);
+									} catch(SQLException e) {
+										throw new RuntimeException(e);
+									}
+								})
 							)
 						)
 					)
 				)
 			);
-		} catch(SQLException | IOException e) {
+		} catch(SQLException e) {
 			throw new RuntimeException(e);
 		}
 	}
 	
 	private void uploadGenerator(Request request) throws SQLException {
 		switch(HttpMethod.fromString(request.getMethod())) {
-			case GET, HEAD -> {
-				Locale locale = HttpUser.bestLocale(request, cm.getSupportedLocales());
-				
-				doGetHtmlStreamed(request, HttpStatus.OK_200, List.of(locale),
-					context(request, translator, Map.of(),
-						page("Upload", locale,
-							content(
-								header(request),
-								mainForm()
-							)
-						)
-					)
-				);
-			}
+			case GET, HEAD -> doGetUploadPage(request);
 			case POST -> {
 				var result = doProcessForms(request, name -> switch(name) {
-					case "lang-select", "username", "comment" -> stringReader();
-					case "password" -> secretBytesReader(); //content.get(passwordHolder[0] = new byte[content.remaining()]);
-					case "upload" -> fileReader(); //content.get(uploadHolder[0] = new byte[content.remaining()]);
-					case "login-action" -> stringReader();
+					case "lang-select", "username", "comment", "login-action", "login-form" -> stringReader();
+					case "password" -> secretBytesReader();
+					case "upload" -> fileReader();
 					default -> throw new RuntimeException("Unknown form field \"" + name + "\"");
 				});
 				
@@ -362,23 +349,29 @@ public class RunSite {
 						);
 					}
 					
-					case "signup" -> throw new RuntimeException("not implemented");
+					default -> throw new RuntimeException("not implemented");
 					
-					default -> doGetHtmlStreamed(request, HttpStatus.OK_200, List.of(locale),
-						context(request, translator, Map.of(),
-							page("Upload", locale,
-								content(
-									header(request),
-									mainForm()
-								)
-							)
-						)
-					);
+					case "other" -> doGetUploadPage(request);
 				}
 			}
 			
 			default -> throw new RuntimeException("Unsupported HTTP method");
 		}
+	}
+	
+	private void doGetUploadPage(Request request) throws SQLException {
+		Locale locale = HttpUser.bestLocale(request, cm.getSupportedLocales());
+		
+		doGetHtmlStreamed(request, HttpStatus.OK_200, List.of(locale),
+			context(request, translator, Map.of(),
+				page("Upload", locale,
+					content(
+						header(request),
+						mainForm()
+					)
+				)
+			)
+		);
 	}
 	
 	private void articlePageProcessor(Request request) throws SQLException, IOException {
