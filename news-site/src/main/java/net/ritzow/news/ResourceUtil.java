@@ -10,17 +10,17 @@ import java.util.function.Supplier;
 
 public class ResourceUtil {
 	static String resourceAsString(String resource) throws IOException {
-		try(var in = RunSite.class.getResourceAsStream(resource)) {
+		try(var in = NewsSite.class.getResourceAsStream(resource)) {
 			return new String(in.readAllBytes(), StandardCharsets.UTF_8);
 		}
 	}
 	
 	static Supplier<InputStream> open(String resource) {
-		return () -> RunSite.class.getResourceAsStream(resource);
+		return () -> NewsSite.class.getResourceAsStream(resource);
 	}
 	
 	static Properties properties(String path) {
-		try(var in = new InputStreamReader(RunSite.class.getResourceAsStream(path), StandardCharsets.UTF_8)) {
+		try(var in = new InputStreamReader(NewsSite.class.getResourceAsStream(path), StandardCharsets.UTF_8)) {
 			var p = new Properties();
 			p.load(in);
 			return p;

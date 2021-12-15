@@ -79,6 +79,10 @@ body > .page-footer {
 	flex: 0 1 auto;
 }
 
+.headerless-content {
+	margin-top: var(--pad-big);
+}
+
 .logo {
 	display: inline;
 	white-space: nowrap;

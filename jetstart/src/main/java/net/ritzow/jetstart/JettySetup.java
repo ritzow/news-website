@@ -13,6 +13,7 @@ import java.security.KeyStoreException;
 import java.security.NoSuchAlgorithmException;
 import java.security.cert.CertificateException;
 import java.util.EnumSet;
+import java.util.function.Consumer;
 import org.eclipse.jetty.alpn.server.ALPNServerConnectionFactory;
 import org.eclipse.jetty.http.CookieCompliance;
 import org.eclipse.jetty.http.HttpCompliance;
@@ -21,6 +22,7 @@ import org.eclipse.jetty.http.HttpStatus;
 import org.eclipse.jetty.http.UriCompliance;
 import org.eclipse.jetty.http2.server.HTTP2ServerConnectionFactory;
 import org.eclipse.jetty.server.*;
+import org.eclipse.jetty.server.handler.AbstractHandler;
 import org.eclipse.jetty.server.handler.ErrorHandler;
 import org.eclipse.jetty.server.handler.RequestLogHandler;
 import org.eclipse.jetty.server.handler.SecuredRedirectHandler;
@@ -33,9 +35,15 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public class JettySetup {
+	
+	@FunctionalInterface
+	public interface RequestConsumer<T extends Exception> {
+		void accept(Request request) throws T;
+	}
+	
 	public static Server newStandardServer(InetAddress bind, boolean requireSni,
-			Path keyStore, String keyStorePassword, Handler handler, Handler errorHandler) throws CertificateException,
-			IOException, KeyStoreException, NoSuchAlgorithmException {
+			Path keyStore, String keyStorePassword, RequestConsumer<? extends Exception> mainHandler, RequestConsumer<? extends Exception> errorHandler)
+			throws CertificateException, IOException, KeyStoreException, NoSuchAlgorithmException {
 		QueuedThreadPool pool = new QueuedThreadPool(Runtime.getRuntime().availableProcessors());
 		pool.setName("pool");
 		Server server = new Server(pool);
@@ -43,16 +51,30 @@ public class JettySetup {
 		var onError = new ErrorHandler() {
 			@Override
 			public void handle(String target, Request baseRequest,
-				HttpServletRequest request, HttpServletResponse response) throws IOException, ServletException {
-//				Throwable cause = (Throwable)request.getAttribute(RequestDispatcher.ERROR_EXCEPTION);
-//				if(cause != null) {
-//					cause.printStackTrace();
-//				}
-				errorHandler.handle(target, baseRequest, request, response);
+				HttpServletRequest request, HttpServletResponse response) throws IOException {
+				Throwable cause = (Throwable)request.getAttribute(RequestDispatcher.ERROR_EXCEPTION);
+				if(cause != null) {
+					cause.printStackTrace();
+				}
+				try {
+					errorHandler.accept(baseRequest);
+				} catch(Exception e) {
+					throw new IOException(e);
+				}
 			}
 		};
 		server.setErrorHandler(onError);
-		server.setHandler(setupHandlers(server, handler));
+		server.setHandler(setupHandlers(server, new AbstractHandler() {
+			@Override
+			public void handle(String target, Request baseRequest, HttpServletRequest request, HttpServletResponse response)
+					throws IOException {
+				try {
+					mainHandler.accept(baseRequest);
+				} catch(Exception e) {
+					throw new IOException(e);
+				}
+			}
+		}));
 		return server;
 	}
 	

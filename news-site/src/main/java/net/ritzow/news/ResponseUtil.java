@@ -2,24 +2,23 @@ package net.ritzow.news;
 
 import j2html.rendering.FlatHtml;
 import j2html.tags.DomContent;
-import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.io.OutputStreamWriter;
 import java.io.UncheckedIOException;
 import java.io.Writer;
 import java.nio.charset.StandardCharsets;
-import java.sql.SQLException;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.Map.Entry;
+import java.util.function.Predicate;
+import java.util.regex.Pattern;
 import org.eclipse.jetty.http.HttpHeader;
-import org.eclipse.jetty.server.Handler;
 import org.eclipse.jetty.server.Request;
 import org.eclipse.jetty.server.Response;
-import org.eclipse.jetty.server.handler.AbstractHandler;
 
 public class ResponseUtil {
-	
 	static void doGetHtmlStreamed(Request request, int status, List<Locale> langs, DomContent html) {
 		try {
 			//TODO send prefetch 103 Early Hints
@@ -45,38 +44,39 @@ public class ResponseUtil {
 		response.setHeader(HttpHeader.REFERER, "no-referrer");
 	}
 	
-	/** RequestState contains all per-request session state, providing an
-	 * efficient alternative to String-based request attributes **/
-//	static class RequestState {
-//
-//	}
+	private static final Pattern PATH_COMPONENT = Pattern.compile("/");
 	
-	interface PageHandler {
-		void accept(Request request) throws IOException, SQLException;
+	public static Iterator<String> path(Request request) {
+		return PATH_COMPONENT.splitAsStream(request.getHttpURI().getDecodedPath()).filter(Predicate.not(String::isEmpty)).iterator();
 	}
 	
-	static Handler generatedHandler(PageHandler function) {
-		return new AbstractHandler() {
-			@Override
-			public void handle(String target, Request baseRequest,
-					HttpServletRequest request, HttpServletResponse response) throws IOException {
-				try {
-					function.accept(baseRequest);
-				} catch(SQLException e) {
-					/* TODO try https://stackoverflow.com/a/4375634/2442171 */
-					throw new RuntimeException(e);
-				}
-			}
+	@FunctionalInterface
+	public interface RequestConsumer<T extends Exception> {
+		void accept(Request request) throws T;
+	}
+	
+	@FunctionalInterface
+	public interface ContextRequestConsumer<T extends Exception> {
+		void accept(Request request, Iterator<String> path) throws T;
+	}
+	
+	public static <T extends Exception> RequestConsumer<T> matchStaticPaths(ContextRequestConsumer<T> paths) {
+		return request -> {
+			var path = ResponseUtil.path(request);
+			paths.accept(request, path);
 		};
 	}
 	
-	@SuppressWarnings("unchecked")
-	static <T> T requestAttribute(Request request) {
-		return (T)request.getAttribute("net.ritzow.web.request");
-	}
-	
-	/* Set request-related data */
-	static <T> void requestAttribute(Request request, T value) {
-		request.setAttribute("net.ritzow.web.request", value);
+	@SafeVarargs
+	public static <T extends Exception> ContextRequestConsumer<T> rootNoMatchOrNext(RequestConsumer<? extends T> root,
+			ContextRequestConsumer<? extends T> noMatch, Entry<String, ContextRequestConsumer<? extends T>>... paths) {
+		var map = Map.ofEntries(paths);
+		return (request, it) -> {
+			if(it.hasNext()) {
+				map.getOrDefault(it.next(), noMatch).accept(request, it);
+			} else {
+				root.accept(request);
+			}
+		};
 	}
 }

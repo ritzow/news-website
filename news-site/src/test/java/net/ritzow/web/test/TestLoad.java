@@ -3,6 +3,7 @@ package net.ritzow.web.test;
 import java.net.InetAddress;
 import java.nio.file.Path;
 import java.security.KeyStore;
+import net.ritzow.news.NewsSite;
 import org.eclipse.jetty.client.api.Request;
 import org.eclipse.jetty.client.api.Request.Listener;
 import org.eclipse.jetty.util.ssl.SslContextFactory.Client;
@@ -22,7 +23,7 @@ class TestLoad {
 	@DisplayName("Run Load Generator")
 	@Timeout(2)
 	void runTest() throws Exception {
-		var server = net.ritzow.news.RunSite.startServer(
+		var server = NewsSite.start(
 			InetAddress.getByName("::1"), false,
 			Path.of(System.getProperty("net.ritzow.certs")),
 			System.getProperty("net.ritzow.pass")
@@ -70,5 +71,6 @@ class TestLoad {
 		
 		generator.begin().join();
 		server.stop();
+		server.await();
 	}
 }

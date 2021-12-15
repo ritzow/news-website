@@ -12,7 +12,6 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.stream.Stream;
 import net.ritzow.jetstart.Translator;
-import net.ritzow.news.RequestHandlerContent.RequestHandler;
 import org.eclipse.jetty.server.Request;
 
 import static j2html.TagCreator.*;
@@ -71,8 +70,18 @@ public class PageTemplate {
 		};
 	}
 	
+	public interface RequestHandler {
+		DomContent handle(HtmlSessionState request) throws IOException;
+	}
+	
 	public static DomContent dynamic(RequestHandler handler) {
-		return new RequestHandlerContent(handler);
+		return new DomContent() {
+			@Override
+			public <T extends Appendable> T render(HtmlBuilder<T> builder, Object model) throws IOException {
+				handler.handle((HtmlSessionState)model).render(builder, model);
+				return builder.output();
+			}
+		};
 	}
 	
 	public static DomContent named(String name) {
@@ -94,9 +103,6 @@ public class PageTemplate {
 				return builder.output();
 			}
 		};
-		
-//		return new RequestHandlerContent(state ->
-//			rawHtml(state.translator().forPrioritized(name, HttpUser.localesForUser(state.request()))));
 	}
 	
 	public static FormTag postForm() {
@@ -125,17 +131,6 @@ public class PageTemplate {
 			span("RedNet!").withClass("logo-text")
 		);
 	}
-	
-//	public static DomContent inName(DomContent existing, String name, DomContent named) {
-//		return new DomContent() {
-//			@Override
-//			public <T extends Appendable> T render(HtmlBuilder<T> builder, Object model) throws IOException {
-//				((HtmlSessionState)model).insert(name, named);
-//				existing.render(builder, model);
-//				return builder.output();
-//			}
-//		};
-//	}
 	
 	private static final DomContent HEAD_HTML = TagCreator.head(
 		named("title"),
@@ -166,7 +161,6 @@ public class PageTemplate {
 	public static FormTag mainForm() {
 		return form()
 			.withId("main")
-			//.withAction("/upload")
 			.withMethod("post")
 			.withEnctype("multipart/form-data").with(
 			p("Username:"),
@@ -174,7 +168,6 @@ public class PageTemplate {
 				.withCondRequired(true)
 				.withClass("form-element")
 				.withType("text")
-				//.withId("username")
 				.withName("username")
 				.withPlaceholder("Username"),
 			p("Password:"),
@@ -182,7 +175,6 @@ public class PageTemplate {
 				.withCondRequired(true)
 				.withClass("form-element")
 				.withType("password")
-				//.withId("password")
 				.withName("password")
 				.withPlaceholder("Password"),
 			p().with(
@@ -190,12 +182,10 @@ public class PageTemplate {
 				input()
 					.withType("file")
 					.withName("upload")
-					//.withId("upload-field")
 			),
 			p("Echo:"),
 			textarea()
 				.withClass("form-element")
-				//.withId("comment")
 				.withName("comment")
 				.withPlaceholder("Type some text here."),
 			p(input().withType("submit"))

@@ -1,6 +1,5 @@
 package net.ritzow.news;
 
-import j2html.TagCreator;
 import j2html.tags.DomContent;
 import j2html.tags.specialized.BodyTag;
 import j2html.tags.specialized.ButtonTag;
@@ -18,7 +17,6 @@ import java.time.format.FormatStyle;
 import java.util.*;
 import java.util.concurrent.CountDownLatch;
 import net.ritzow.jetstart.JettySetup;
-import net.ritzow.jetstart.StaticPathHandler;
 import net.ritzow.jetstart.Translator;
 import net.ritzow.news.ContentManager.Article;
 import org.eclipse.jetty.http.HttpHeader;
@@ -30,13 +28,11 @@ import org.eclipse.jetty.util.Callback;
 
 import static j2html.TagCreator.*;
 import static java.util.Map.entry;
-import static net.ritzow.jetstart.JettyHandlers.newPath;
 import static net.ritzow.news.Forms.*;
 import static net.ritzow.news.PageTemplate.*;
 import static net.ritzow.news.ResourceUtil.open;
 import static net.ritzow.news.ResourceUtil.properties;
-import static net.ritzow.news.ResponseUtil.doGetHtmlStreamed;
-import static net.ritzow.news.ResponseUtil.generatedHandler;
+import static net.ritzow.news.ResponseUtil.*;
 
 /* TODO use integrity attribute to verify content if delivered via CDN and use crossorigin="anonymous" */
 //TODO set loading="lazy" on img HTML elements.
@@ -47,30 +43,17 @@ import static net.ritzow.news.ResponseUtil.generatedHandler;
 //TODO create Handler that handles language-switch POST requests and wrap newPath call
 //TODO use Link header to prefetch stylesheet and font, add parameter to doGetHtmlStreamed
 
-public class NewsSite {
+public final class NewsSite {
+	private final Server server;
+	private final ContentManager cm;
+	private final Translator<String> translator;
+	private final CountDownLatch shutdownLock = new CountDownLatch(1);
 	
-	public static void main(String[] args) throws Exception {
-		var server = new NewsSite(
-			InetAddress.getByName("::1"), false,
-			Path.of(System.getProperty("net.ritzow.certs")),
-			System.getProperty("net.ritzow.pass")
-		);
-		server.start();
-		server.await();
-		server.stop();
-	}
-	
-	public static NewsSite startServer(InetAddress bind, boolean requireSni, Path keyStore, String keyStorePassword) throws Exception {
+	public static NewsSite start(InetAddress bind, boolean requireSni, Path keyStore, String keyStorePassword) throws Exception {
 		var server = new NewsSite(bind, requireSni, keyStore, keyStorePassword);
 		server.start();
 		return server;
 	}
-	
-	private final Server server;
-	private final ContentManager cm;
-	private final Translator<String> translator;
-	
-	private final CountDownLatch shutdownLock = new CountDownLatch(1);
 	
 	private NewsSite(InetAddress bind, boolean requireSni, Path keyStore, String keyStorePassword) throws
 			CertificateException,
@@ -78,10 +61,17 @@ public class NewsSite {
 			KeyStoreException,
 			NoSuchAlgorithmException,
 			SQLException {
-		server = createServer(bind, requireSni, keyStore, keyStorePassword);
 		cm = ContentManager.ofMemoryDatabase();
 		ContentUtil.genArticles(cm);
 		translator = Translator.ofProperties(properties("/lang/welcome.properties"));
+		server = JettySetup.newStandardServer(
+			bind,
+			requireSni,
+			keyStore,
+			keyStorePassword,
+			route()::accept,
+			this::errorGenerator
+		);
 	}
 	
 	public void start() throws Exception {
@@ -90,31 +80,29 @@ public class NewsSite {
 	
 	public void await() throws InterruptedException {
 		shutdownLock.await();
+		server.join();
 	}
 	
 	public void stop() throws Exception {
 		shutdownLock.countDown();
 		server.stop();
 		cm.shutdown();
-		server.join();
 	}
 	
-	public Server createServer(InetAddress bind, boolean requireSni, Path keyStore, String keyStorePassword)
-			throws CertificateException, IOException, KeyStoreException, NoSuchAlgorithmException {
-		return JettySetup.newStandardServer(
-			bind, requireSni, keyStore, keyStorePassword,
-			newPath(
-				generatedHandler(this::mainPageGenerator),
-				entry("/article", generatedHandler(this::articlePageProcessor)),
-				entry("/upload", generatedHandler(this::uploadGenerator)),
-				entry("/shutdown", generatedHandler(this::shutdownPage)),
-				entry("/opensearch", new StaticContentHandler(open("/xml/opensearch.xml"),
+	private RequestConsumer<Exception> route() {
+		return matchStaticPaths(
+			rootNoMatchOrNext(
+				this::mainPageGenerator,
+				this::doGeneric404,
+				entry("article", this::articlePageProcessor),
+				entry("upload", this::uploadGenerator),
+				entry("shutdown", this::shutdownPage),
+				entry("opensearch", new StaticContentHandler(open("/xml/opensearch.xml"),
 					"application/opensearchdescription+xml")),
-				entry("/style.css", new StaticContentHandler(open("/css/global.css"), "text/css")),
-				entry("/icon.svg", new StaticContentHandler(open("/image/icon.svg"), "image/svg+xml")),
-				entry("/opensans.ttf", new StaticContentHandler(open("/font/OpenSans-Regular.ttf"), "font/ttf"))
-			),
-			generatedHandler(this::errorGenerator)
+				entry("style.css", new StaticContentHandler(open("/css/global.css"), "text/css")),
+				entry("icon.svg", new StaticContentHandler(open("/image/icon.svg"), "image/svg+xml")),
+				entry("opensans.ttf", new StaticContentHandler(open("/font/OpenSans-Regular.ttf"), "font/ttf"))
+			)
 		);
 	}
 	
@@ -160,7 +148,7 @@ public class NewsSite {
 		return HttpUser.bestLocale(request, cm.getSupportedLocales());
 	}
 	
-	private void shutdownPage(Request request) {
+	private void shutdownPage(Request request, Iterator<String> path) {
 		doGetHtmlStreamed(request, HttpStatus.OK_200, List.of(),
 			html().with(
 				body().with(
@@ -182,7 +170,7 @@ public class NewsSite {
 		});
 	}
 	
-	/* HTML should used "named" content when a lage chunk of HTML has a small number of dynamic elements */
+	/* HTML should use "named" content when a lage chunk of HTML has a small number of dynamic elements */
 	@RequiresDynamicHtml
 	@RequiresNamedHtml({"header-content", "content"})
 	private static final DomContent CONTENT_HTML = each(
@@ -257,9 +245,13 @@ public class NewsSite {
 	/** Respond to {@code request} with a 303 redirect to the page, and set the language. **/
 	private void processLangForm(Request request, String langTag) {
 		storeLocale(request, langTag);
-		request.getResponse().setHeader(HttpHeader.LOCATION, request.getHttpURI().getDecodedPath());
-		request.getResponse().setStatus(HttpStatus.SEE_OTHER_303);
+		doSeeOther(request, request.getHttpURI().getDecodedPath());
 		request.setHandled(true);
+	}
+	
+	private static void doSeeOther(Request request, String location) {
+		request.getResponse().setHeader(HttpHeader.LOCATION, location);
+		request.getResponse().setStatus(HttpStatus.SEE_OTHER_303);
 	}
 	
 	private void storeLocale(Request request, String languageTag) {
@@ -273,6 +265,10 @@ public class NewsSite {
 	}
 	
 	private void mainPageGenerator(Request request) {
+		mainPageGenerator(request, Collections.emptyIterator());
+	}
+	
+	private void mainPageGenerator(Request request, Iterator<String> path) {
 		if(HttpMethod.fromString(request.getMethod()) == HttpMethod.POST) {
 			var result = doProcessForms(request, name -> switch(name) {
 				case "lang-select" -> stringReader();
@@ -282,7 +278,7 @@ public class NewsSite {
 			return;
 		}
 		
-		if(StaticPathHandler.peekComponent(request).isPresent()) {
+		if(path.hasNext()) {
 			doGeneric404(request);
 			return;
 		}
@@ -317,7 +313,7 @@ public class NewsSite {
 		}
 	}
 	
-	private void uploadGenerator(Request request) throws SQLException {
+	private void uploadGenerator(Request request, Iterator<String> path) throws SQLException {
 		switch(HttpMethod.fromString(request.getMethod())) {
 			case GET, HEAD -> doGetUploadPage(request);
 			case POST -> {
@@ -375,7 +371,7 @@ public class NewsSite {
 		);
 	}
 	
-	private void articlePageProcessor(Request request) throws SQLException, IOException {
+	private void articlePageProcessor(Request request, Iterator<String> path) throws SQLException, IOException {
 		if(HttpMethod.fromString(request.getMethod()) == HttpMethod.POST) {
 			var result = doProcessForms(request, name -> switch(name) {
 				case "lang-select" -> stringReader();
@@ -386,7 +382,7 @@ public class NewsSite {
 			return;
 		}
 		
-		Optional<String> name = StaticPathHandler.peekComponent(request);
+		Optional<String> name = Optional.ofNullable(path.hasNext() ? path.next() : null);
 		Locale mainLocale = HttpUser.bestLocale(request, cm.getSupportedLocales());
 		
 		//TODO make sure there isn't an extra component in the path
@@ -399,15 +395,12 @@ public class NewsSite {
 		String urlname = name.get();
 		List<Locale> supported = cm.getArticleLocales(urlname);
 		
+		if(path.hasNext()) {
+			doGeneric404(request);
+		}
+		
 		if(supported.isEmpty()) {
-			doGetHtmlStreamed(request, HttpStatus.NOT_FOUND_404, List.of(mainLocale),
-				page("Error", mainLocale,
-					content(
-						header(request),
-						p("No such article " + urlname)
-					)
-				)
-			);
+			doNoSuchArticle(request, mainLocale, urlname);
 			return;
 		}
 		
@@ -415,14 +408,7 @@ public class NewsSite {
 		Optional<Article<MarkdownContent>> article = cm.getLatestArticle(urlname, articleLocale, MarkdownContent::new);
 		
 		if(article.isEmpty()) {
-			doGetHtmlStreamed(request, HttpStatus.NOT_FOUND_404, List.of(mainLocale, articleLocale),
-				page("Error", mainLocale,
-					content(
-						header(request),
-						p("No such article " + urlname)
-					)
-				)
-			);
+			doNoSuchArticle(request, mainLocale, urlname);
 			return;
 		}
 		
@@ -431,7 +417,7 @@ public class NewsSite {
 				page(article.get().title(), mainLocale,
 					content(
 						header(request),
-						TagCreator.main().withLang(articleLocale.toLanguageTag()).with(
+						main().withLang(articleLocale.toLanguageTag()).with(
 							article(
 								h1(article.get().title()).withClass("title-article"),
 								articleLocale.equals(mainLocale) ? null :
@@ -439,6 +425,19 @@ public class NewsSite {
 								div().withClass("markdown").with(article.get().content())
 							)
 						)
+					)
+				)
+			)
+		);
+	}
+	
+	private void doNoSuchArticle(Request request, Locale mainLocale, String urlname) throws SQLException {
+		doGetHtmlStreamed(request, HttpStatus.NOT_FOUND_404, List.of(mainLocale),
+			context(request, translator, Map.of(),
+				page("Error", mainLocale,
+					content(
+						header(request),
+						p("No such article " + urlname)
 					)
 				)
 			)
@@ -460,12 +459,28 @@ public class NewsSite {
 		);
 	}
 	
+	@RequiresDynamicHtml
+	@RequiresNamedHtml({"content"})
+	private static final DomContent STATIC_CENTERED_CONTENT = each(
+		div().withClasses("page-body", "headerless-content").with(
+			div().withClass("content-left"),
+			mainBox(
+				named("content")
+			),
+			div().withClass("content-right")
+		)
+	);
+	
+	private static DomContent staticContent(DomContent... content) {
+		return dynamic(STATIC_CENTERED_CONTENT, Map.of("content", each(content)));
+	}
+	
 	private void doGeneric404(Request request) {
 		doGetHtmlStreamed(request, HttpStatus.NOT_FOUND_404, List.of(),
 			context(request, translator, Map.of(),
 				page("Error", Locale.forLanguageTag("en-US"),
-					mainBox(
-						p("\"" + request.getHttpURI() + "\" does not exist."),
+					staticContent(
+						p("\"" + request.getHttpURI().getHost() + request.getHttpURI().getDecodedPath() + "\" does not exist."),
 						a("Go home").withHref("/")
 					)
 				)
@@ -473,11 +488,15 @@ public class NewsSite {
 		);
 	}
 	
+	private void doGeneric404(Request request, Iterator<String> path) {
+		doGeneric404(request);
+	}
+	
 	private void errorGenerator(Request request) {
 		doGetHtmlStreamed(request, HttpStatus.INTERNAL_SERVER_ERROR_500, List.of(),
 			context(request, translator, Map.of(),
 				page("Error", Locale.forLanguageTag("en-US"),
-					mainBox(
+					staticContent(
 						p("Sorry, there was an unexpected error!"),
 						a("Go home").withHref("/")
 					)

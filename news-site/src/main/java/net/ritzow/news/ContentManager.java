@@ -5,11 +5,13 @@ import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.Reader;
+import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.sql.*;
 import java.util.*;
 import java.util.Map.Entry;
 import java.util.function.Function;
+import net.ritzow.jetstart.CharsetUtil;
 
 import static java.util.Map.entry;
 
@@ -289,7 +291,8 @@ public final class ContentManager {
 						String title = readBlobUtf8(blob);
 						blob.free();
 						blob = result.getBlob("markdown");
-						var content = transform.apply(new InputStreamReader(blob.getBinaryStream(), StandardCharsets.UTF_8));
+						var content = transform.apply(new InputStreamReader(blob.getBinaryStream(),
+							CharsetUtil.decoder(StandardCharsets.UTF_8)));
 						blob.free();
 						return Optional.of(new Article<>(title, content));
 					} else {

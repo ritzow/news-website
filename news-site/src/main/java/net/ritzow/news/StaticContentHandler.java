@@ -1,7 +1,5 @@
 package net.ritzow.news;
 
-import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.io.InputStream;
 import java.lang.ref.SoftReference;
@@ -9,15 +7,16 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
 import java.util.Base64;
+import java.util.Iterator;
 import java.util.function.Supplier;
+import net.ritzow.news.ResponseUtil.ContextRequestConsumer;
 import org.eclipse.jetty.http.HttpField;
 import org.eclipse.jetty.http.HttpHeader;
 import org.eclipse.jetty.http.HttpStatus;
 import org.eclipse.jetty.server.Request;
 import org.eclipse.jetty.server.Response;
-import org.eclipse.jetty.server.handler.AbstractHandler;
 
-class StaticContentHandler extends AbstractHandler {
+class StaticContentHandler implements ContextRequestConsumer<IOException> {
 	private final String contentType;
 	private final Supplier<InputStream> resource;
 	private SoftReference<byte[]> content;
@@ -30,10 +29,9 @@ class StaticContentHandler extends AbstractHandler {
 	}
 	
 	@Override
-	public void handle(String target, Request baseRequest,
-		HttpServletRequest request, HttpServletResponse response) throws IOException {
+	public void accept(Request request, Iterator<String> path) throws IOException {
 		
-		Response baseResponse = baseRequest.getResponse();
+		Response baseResponse = request.getResponse();
 		
 		byte[] data = null;
 		
@@ -41,7 +39,7 @@ class StaticContentHandler extends AbstractHandler {
 			data = load();
 		}
 		
-		HttpField field = baseRequest.getHttpFields().getField(HttpHeader.IF_NONE_MATCH);
+		HttpField field = request.getHttpFields().getField(HttpHeader.IF_NONE_MATCH);
 		
 		if(field != null && field.contains(etag)) {
 			baseResponse.setStatus(HttpStatus.NOT_MODIFIED_304);
@@ -63,7 +61,7 @@ class StaticContentHandler extends AbstractHandler {
 			baseResponse.getHttpOutput().write(data);
 			baseResponse.getHttpOutput().flush();
 		}
-		baseRequest.setHandled(true);
+		request.setHandled(true);
 	}
 	
 	private byte[] load() throws IOException {
