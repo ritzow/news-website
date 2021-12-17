@@ -1,2 +1,2 @@
 rootProject.name = 'net.ritzow.web'
-include 'jetstart', 'news-site'
+include 'news-site'

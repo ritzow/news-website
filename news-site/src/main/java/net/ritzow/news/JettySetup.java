@@ -1,4 +1,4 @@
-package net.ritzow.jetstart;
+package net.ritzow.news;
 
 import jakarta.servlet.RequestDispatcher;
 import jakarta.servlet.ServletException;
@@ -75,6 +75,7 @@ public class JettySetup {
 				}
 			}
 		}));
+		server.setStopAtShutdown(true);
 		return server;
 	}
 	

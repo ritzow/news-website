@@ -11,7 +11,6 @@ import java.io.UncheckedIOException;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.stream.Stream;
-import net.ritzow.jetstart.Translator;
 import org.eclipse.jetty.server.Request;
 
 import static j2html.TagCreator.*;

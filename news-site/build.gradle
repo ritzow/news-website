@@ -1,11 +1,6 @@
 
 plugins {
 	id 'application'
-	id "com.github.ben-manes.versions" version "0.39.0"
-	id 'org.kordamp.gradle.jdeps' version '0.15.0'
-	//id 'net.ritzow.news.build'
-	//id "com.eriwen.gradle.css" version "2.14.0"
-	//id "com.eriwen.gradle.js" version "2.14.1"
 }
 
 repositories {
@@ -13,15 +8,17 @@ repositories {
 }
 
 dependencies {
-	implementation project(':jetstart')
 	implementation 'org.eclipse.jetty:jetty-server:11.0.7'
 	implementation 'com.j2html:j2html:1.5.0'
 	implementation 'org.commonmark:commonmark:0.18.0'
 	implementation 'com.zaxxer:HikariCP:5.0.0'
-	implementation 'org.hsqldb:sqltool:2.6.1'
-	//implementation 'com.h2database:h2:2.0.202'
+	implementation 'org.eclipse.jetty.http2:http2-server:11.0.7'
+	implementation 'org.eclipse.jetty:jetty-alpn-java-server:11.0.7'
+	implementation 'com.j2html:j2html:1.5.0'
 
 	runtimeOnly 'org.hsqldb:hsqldb:2.6.1'
+	runtimeOnly 'org.slf4j:slf4j-jdk-platform-logging:2.0.0-alpha5'
+	runtimeOnly 'org.slf4j:slf4j-simple:2.0.0-alpha5'
 
 	testImplementation 'org.mortbay.jetty.loadgenerator:jetty-load-generator-client:3.1.0'
 	testImplementation 'org.junit.jupiter:junit-jupiter:5.8.2'
@@ -56,11 +53,11 @@ def static isOutOfDate(Path inputPath, Path outputPath) {
 jar {
 	outputs.upToDateWhen { false }
 
-	def outputDir = sourceSets.main.output.resourcesDir.toPath()
+	def outputDir = project.sourceSets.main.output.resourcesDir.toPath()
 
 	doFirst {
-		def inputCss = project.projectDir.toPath().resolve('src/main/css/global.scss')
-		def outputCss = outputDir.resolve('css/global.css')
+		Path inputCss = project.projectDir.toPath().resolve('src/main/css/global.scss')
+		Path outputCss = outputDir.resolve('css/global.css')
 		mkdir outputDir
 		if(isOutOfDate(inputCss, outputCss)) {
 			exec {
@@ -72,8 +69,8 @@ jar {
 			}.assertNormalExitValue()
 		}
 
-		def inputIcon = project.projectDir.toPath().resolve("src/main/image/icon.svg")
-		def outputIcon = outputDir.resolve("image/icon.svg")
+		Path inputIcon = project.projectDir.toPath().resolve("src/main/image/icon.svg")
+		Path outputIcon = outputDir.resolve("image/icon.svg")
 
 		if(isOutOfDate(inputIcon, outputIcon)) {
 			exec { /* TODO use scour to optimize svg files */
@@ -86,12 +83,15 @@ jar {
 	}
 }
 
+def debugLevel = 'debug'
+
 test {
 	useJUnitPlatform()
 
 	jvmArgs '-Dnet.ritzow.certs=' + properties.getProperty('keystore.file'),
 			'-Dnet.ritzow.pass=' + properties.getProperty('keystore.password'),
-			'-Dnet.ritzow.debug=true'
+			'-Dnet.ritzow.debug=true',
+			'-Dorg.slf4j.simpleLogger.defaultLogLevel=' + debugLevel
 }
 
 run {
@@ -100,5 +100,8 @@ run {
 
 	jvmArgs '-Dnet.ritzow.certs=' + properties.getProperty('keystore.file'),
 			'-Dnet.ritzow.pass=' + properties.getProperty('keystore.password'),
-			'-Dnet.ritzow.debug=true'
+			'-Dnet.ritzow.debug=true',
+			'-Dorg.slf4j.simpleLogger.defaultLogLevel=' + debugLevel,
+			'-Dorg.slf4j.simpleLogger.log.org.eclipse.jetty=info',
+			'-Xlog:all=warning:stderr'
 }

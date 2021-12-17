@@ -1,4 +1,4 @@
-package net.ritzow.jetstart;
+package net.ritzow.news;
 
 import java.util.*;
 

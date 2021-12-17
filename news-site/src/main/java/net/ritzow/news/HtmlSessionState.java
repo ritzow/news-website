@@ -3,7 +3,6 @@ package net.ritzow.news;
 import j2html.tags.DomContent;
 import java.util.HashMap;
 import java.util.Map;
-import net.ritzow.jetstart.Translator;
 import org.eclipse.jetty.server.Request;
 
 public class HtmlSessionState {
