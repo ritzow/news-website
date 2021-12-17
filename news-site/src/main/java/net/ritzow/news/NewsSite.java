@@ -44,11 +44,10 @@ public final class NewsSite {
 	private final Server server;
 	private final ContentManager cm;
 	private final Translator<String> translator;
-	private final CountDownLatch shutdownLock = new CountDownLatch(1);
 	
 	public static NewsSite start(InetAddress bind, boolean requireSni, Path keyStore, String keyStorePassword) throws Exception {
 		var server = new NewsSite(bind, requireSni, keyStore, keyStorePassword);
-		server.start();
+		server.server.start();
 		return server;
 	}
 	
@@ -69,21 +68,6 @@ public final class NewsSite {
 			route()::accept,
 			this::errorGenerator
 		);
-	}
-	
-	public void start() throws Exception {
-		server.start();
-	}
-	
-	public void await() throws InterruptedException {
-		shutdownLock.await();
-		server.join();
-	}
-	
-	public void stop() throws Exception {
-		shutdownLock.countDown();
-		server.stop();
-		cm.shutdown();
 	}
 	
 	private RequestConsumer<Exception> route() {
@@ -157,7 +141,11 @@ public final class NewsSite {
 		request.getResponse().getHttpOutput().complete(new Callback() {
 			@Override
 			public void succeeded() {
-				shutdownLock.countDown();
+				try {
+					server.stop();
+				} catch(Exception e) {
+					throw new RuntimeException(e);
+				}
 			}
 			
 			@Override
