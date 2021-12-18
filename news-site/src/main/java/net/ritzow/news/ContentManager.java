@@ -1,11 +1,7 @@
 package net.ritzow.news;
 
 import com.zaxxer.hikari.HikariDataSource;
-import java.io.ByteArrayInputStream;
-import java.io.IOException;
-import java.io.InputStreamReader;
-import java.io.Reader;
-import java.nio.charset.CodingErrorAction;
+import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.sql.*;
 import java.util.*;
@@ -23,6 +19,8 @@ public final class ContentManager {
 	
 	private ContentManager() throws SQLException {
 		HikariDataSource pool = new HikariDataSource();
+		/* TODO log to SLF4J */
+		pool.setLogWriter(new PrintWriter(System.err));
 		pool.setJdbcUrl("jdbc:hsqldb:mem:test");
 		//pool.setJdbcUrl("jdbc:h2:mem:");
 		pool.setDataSourceProperties(properties(

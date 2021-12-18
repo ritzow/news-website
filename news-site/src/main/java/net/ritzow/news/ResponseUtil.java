@@ -21,6 +21,9 @@ import org.eclipse.jetty.server.Response;
 public class ResponseUtil {
 	static void doGetHtmlStreamed(Request request, int status, List<Locale> langs, DomContent html) {
 		try {
+			/* Must consume all request body content! (Jetty was giving a DEBUG exception) */
+			skipInput(request);
+			
 			//TODO send prefetch 103 Early Hints
 			//request.getResponse().getHttpChannel().sendResponse(new MetaData.Response())
 			
@@ -34,6 +37,12 @@ public class ResponseUtil {
 		} catch(IOException e) {
 			throw new UncheckedIOException(e);
 		}
+	}
+	
+	public static void skipInput(Request request) throws IOException {
+		/* might be inefficient? could throw exception if request body larger than 2GB */
+		//request.getHttpInput().readAllBytes();
+		request.getHttpInput().consumeAll();
 	}
 	
 	private static void setBasicStreamingHeaders(Response response, int status, String contentType) {

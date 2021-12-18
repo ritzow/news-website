@@ -16,6 +16,8 @@ import org.eclipse.jetty.http.HttpStatus;
 import org.eclipse.jetty.server.Request;
 import org.eclipse.jetty.server.Response;
 
+import static net.ritzow.news.ResponseUtil.skipInput;
+
 class StaticContentHandler implements ContextRequestConsumer<IOException> {
 	private final String contentType;
 	private final Supplier<InputStream> resource;
@@ -30,6 +32,8 @@ class StaticContentHandler implements ContextRequestConsumer<IOException> {
 	
 	@Override
 	public void accept(Request request, Iterator<String> path) throws IOException {
+		
+		skipInput(request);
 		
 		Response baseResponse = request.getResponse();
 		
