@@ -4,37 +4,33 @@ import jakarta.servlet.http.HttpSession;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 import org.eclipse.jetty.http.HttpHeader;
 import org.eclipse.jetty.server.Request;
 
 public class HttpUser {
+	private static final String SESSION_ATTRIBUTE = "net.ritzow.sessiondata";
+	
 	public static List<Locale> localesForUser(Request request) {
 		List<String> user = request.getHttpFields()
 			.getQualityCSV(HttpHeader.ACCEPT_LANGUAGE);
 		List<Locale> locales = new ArrayList<>(user.size() + 1);
-		SessionData session = getExistingSession(request);
-		if(session != null) {
-			session.locale().ifPresent(locales::add);
-		}
+		Optional<SessionData> session = getExistingSession(request);
+		session.flatMap(SessionData::locale).ifPresent(locales::add);
 		user.stream().map(Locale::forLanguageTag).forEachOrdered(locales::add);
 		return locales;
 	}
 	
-	public static SessionData getExistingSession(Request request) {
+	public static Optional<SessionData> getExistingSession(Request request) {
 		var session = request.getSession(false);
-		if(session == null) {
-			return null;
-		}
-		return (SessionData)session.getAttribute(sessionAttr);
+		return session == null ? Optional.empty() : Optional.of((SessionData)session.getAttribute(SESSION_ATTRIBUTE));
 	}
-	
-	private static final String sessionAttr = "net.ritzow.sessiondata";
 	
 	public static SessionData session(Request request) {
 		HttpSession s = request.getSession();
-		Object session = s.getAttribute(sessionAttr);
+		Object session = s.getAttribute(SESSION_ATTRIBUTE);
 		if(session == null) {
-			s.setAttribute(sessionAttr, session = new SessionData());
+			s.setAttribute(SESSION_ATTRIBUTE, session = new SessionData());
 		}
 		return (SessionData)session;
 	}

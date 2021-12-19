@@ -3,6 +3,7 @@ package net.ritzow.news;
 import j2html.tags.DomContent;
 import j2html.tags.specialized.BodyTag;
 import j2html.tags.specialized.ButtonTag;
+import jakarta.servlet.http.HttpSession;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.nio.file.Path;
@@ -66,7 +67,7 @@ public final class NewsSite {
 			keyStore,
 			keyStorePassword,
 			route()::accept,
-			this::errorGenerator
+			this::exceptionPageHandler
 		);
 	}
 	
@@ -214,17 +215,19 @@ public final class NewsSite {
 		return button;
 	}
 	
+	private static final DomContent LOGIN_FORM_CONTENT = freeze(
+		input().withName("username").withType("text").attr("autocomplete", "username").withPlaceholder("Username"),
+		input().withName("password").withType("password").attr("autocomplete", "current-password").withPlaceholder("Password"),
+		label(input().withName("login-remember").withType("checkbox"), rawHtml("Remember me")),
+		button("Login").withName("login-action").withValue("login"),
+		button("Sign up").withName("login-action").withValue("signup")
+	);
+	
 	/* Cool checkboxes https://stackoverflow.com/questions/4148499/how-to-style-a-checkbox-using-css */
 	/* Custom checkbox https://stackoverflow.com/questions/44299150/set-text-inside-a-check-box/44299305 */
+	/* TODO the username should be prefilled in "value" on the next page if the user clicks "Sign up" */
 	private static DomContent loginForm() {
-		return postForm().withClass("login-form").with(
-			/* TODO the username should be prefilled in "value" on the next page if the user clicks "Sign up" */
-			input().withName("username").withType("text").attr("autocomplete", "username").withPlaceholder("Username"),
-			input().withName("password").withType("password").attr("autocomplete", "current-password").withPlaceholder("Password"),
-			label(input().withName("login-remember").withType("checkbox"), rawHtml("Remember me")),
-			button("Login").withName("login-action").withValue("login"),
-			button("Sign up").withName("login-action").withValue("signup")
-		);
+		return postForm().withClass("login-form").with(LOGIN_FORM_CONTENT);
 	}
 	
 	/** Respond to {@code request} with a 303 redirect to the page, and set the language. **/
@@ -264,34 +267,35 @@ public final class NewsSite {
 		}
 		
 		if(path.hasNext()) {
-			doGeneric404(request);
+			try {
+				doDecoratedPage(HttpStatus.NOT_FOUND_404, request,pageLocale(request), 
+					"No such path", 
+					p(rawHtml("No such path " + prettyUrl(request)))
+				);
+			} catch(SQLException e) {
+				throw new RuntimeException(e);
+			}
 			return;
 		}
 		
 		try {
-			Locale bestLocale = HttpUser.bestLocale(request, cm.getSupportedLocales());
-			doGetHtmlStreamed(request, HttpStatus.OK_200, List.of(bestLocale),
-				context(request, translator, Map.of(),
-					page("RedNet", bestLocale,
-						content(
-							header(request),
-							each(
-								h1(translated("greeting")).withClass("title"),
-								dynamic(state -> {
-									try {
-										return eachStreamed(
-											cm.getArticlesForLocale(bestLocale).stream().map(
-												article3 -> articleBox(article3.title(), "/article/" + article3.urlname())
-											)
-										);
-									} catch(SQLException e) {
-										throw new RuntimeException(e);
-									}
-								})
-							)
-						)
-					)
-				)
+			Locale bestLocale = pageLocale(request);
+			
+			doDecoratedPage(HttpStatus.OK_200, request, bestLocale, "RedNet!",
+				each(
+					h1(translated("greeting")).withClass("title"),
+					dynamic(state -> {
+						try {
+							return eachStreamed(
+								cm.getArticlesForLocale(bestLocale).stream().map(
+									article3 -> articleBox(article3.title(), "/article/" + article3.urlname())
+								)
+							);
+						} catch(SQLException e) {
+							throw new RuntimeException(e);
+						}
+					})
+				)	
 			);
 		} catch(SQLException e) {
 			throw new RuntimeException(e);
@@ -312,23 +316,14 @@ public final class NewsSite {
 				result.apply("lang-select").ifPresent(lang -> processLangForm(request, (String)lang));
 				result.apply("password").ifPresent(data -> Arrays.fill((byte[])data, (byte)0));
 				
-				var locale = HttpUser.bestLocale(request, cm.getSupportedLocales());
+				Locale locale = pageLocale(request);
 				
 				@SuppressWarnings("unchecked") Optional<String> loginAction = (Optional<String>)result.apply("login-action");
 				
 				switch(loginAction.orElse("other")) {
 					case "login" -> {
 						@SuppressWarnings("unchecked") Optional<String> username = (Optional<String>)result.apply("username");
-						doGetHtmlStreamed(request, HttpStatus.OK_200, List.of(locale),
-							context(request, translator, Map.of(),
-								page("Upload", locale,
-									content(
-										header(request),
-										p(username.orElse("No username provided"))
-									)
-								)
-							)
-						);
+						doDecoratedPage(HttpStatus.OK_200, request, locale, "Upload", p(username.orElse("No username provided")));
 					}
 					
 					default -> throw new RuntimeException("not implemented");
@@ -342,25 +337,14 @@ public final class NewsSite {
 	}
 	
 	private void doGetUploadPage(Request request) throws SQLException {
-		Locale locale = HttpUser.bestLocale(request, cm.getSupportedLocales());
-		
-		doGetHtmlStreamed(request, HttpStatus.OK_200, List.of(locale),
-			context(request, translator, Map.of(),
-				page("Upload", locale,
-					content(
-						header(request),
-						mainForm()
-					)
-				)
-			)
-		);
+		doDecoratedPage(HttpStatus.OK_200, request, pageLocale(request), "Upload", mainForm());
 	}
 	
 	private void articlePageProcessor(Request request, Iterator<String> path) throws SQLException, IOException {
 		if(HttpMethod.fromString(request.getMethod()) == HttpMethod.POST) {
 			var result = doProcessForms(request, name -> switch(name) {
 				case "lang-select" -> stringReader();
-				default -> throw new RuntimeException();
+				default -> throw new RuntimeException("Unknown form field");
 			});
 			result.apply("lang-select").ifPresent(lang -> processLangForm(request, lang));
 			//TODO also apply other stuff here
@@ -368,7 +352,7 @@ public final class NewsSite {
 		}
 		
 		Optional<String> name = Optional.ofNullable(path.hasNext() ? path.next() : null);
-		Locale mainLocale = HttpUser.bestLocale(request, cm.getSupportedLocales());
+		Locale mainLocale = pageLocale(request);
 		
 		//TODO make sure there isn't an extra component in the path
 		
@@ -381,7 +365,11 @@ public final class NewsSite {
 		List<Locale> supported = cm.getArticleLocales(urlname);
 		
 		if(path.hasNext()) {
-			doGeneric404(request);
+			doDecoratedPage(HttpStatus.NOT_FOUND_404, request, mainLocale, "Not Found", 
+				p(
+					rawHtml("There is no such page " + prettyUrl(request))
+				)
+			);
 		}
 		
 		if(supported.isEmpty()) {
@@ -397,49 +385,50 @@ public final class NewsSite {
 			return;
 		}
 		
-		doGetHtmlStreamed(request, HttpStatus.OK_200, List.of(mainLocale),
+		doDecoratedPage(HttpStatus.OK_200, request, mainLocale, article.get().title(),
+			main().withLang(articleLocale.toLanguageTag()).with(
+				article(
+					h1(article.get().title()).withClass("title-article"),
+					articleLocale.equals(mainLocale) ? null :
+						h3(articleLocale.getDisplayName(mainLocale)).withClass("article-lang"),
+					div().withClass("markdown").with(article.get().content())
+				)
+			)	
+		);
+	}
+	
+	private void doDecoratedPage(int status, Request request, Locale mainLocale, String title, DomContent body) throws SQLException {
+		doGetHtmlStreamed(request, status, List.of(mainLocale),
 			context(request, translator, Map.of(),
-				page(article.get().title(), mainLocale,
+				page(title, mainLocale,
 					content(
 						header(request),
-						main().withLang(articleLocale.toLanguageTag()).with(
-							article(
-								h1(article.get().title()).withClass("title-article"),
-								articleLocale.equals(mainLocale) ? null :
-									h3(articleLocale.getDisplayName(mainLocale)).withClass("article-lang"),
-								div().withClass("markdown").with(article.get().content())
-							)
-						)
+						body
 					)
 				)
 			)
 		);
 	}
+	
+	private static String prettyUrl(Request request) {
+		return "\"" + request.getHttpURI().getHost() + request.getHttpURI().getDecodedPath() + "\"";
+	}
+	
+	/* TODO translate error pages */
 	
 	private void doNoSuchArticle(Request request, Locale mainLocale, String urlname) throws SQLException {
-		doGetHtmlStreamed(request, HttpStatus.NOT_FOUND_404, List.of(mainLocale),
-			context(request, translator, Map.of(),
-				page("Error", mainLocale,
-					content(
-						header(request),
-						p("No such article " + urlname)
-					)
-				)
-			)
+		doDecoratedPage(HttpStatus.NOT_FOUND_404, request, mainLocale, "No such article",
+			p("No such article \"" + urlname + "\"")
 		);
 	}
 	
-	private void doWrongArticlePath(Request request, Locale mainLocale) {
-		doGetHtmlStreamed(request, HttpStatus.NOT_FOUND_404, List.of(mainLocale),
-			context(request, translator, Map.of(),
-				page("Error", mainLocale,
-					mainBox(
-						p("Please specify an article URL component: ").with(
-							span(request.getHttpURI().toURI().normalize() + "<article-path>")
-						),
-						a("Go home").withHref("/")
-					)
-				)
+	private void doWrongArticlePath(Request request, Locale mainLocale) throws SQLException {
+		doDecoratedPage(HttpStatus.NOT_FOUND_404, request, mainLocale, "Not an article",
+			each(
+				p("Please specify an article URL component: ").with(
+					span(request.getHttpURI().toURI().normalize() + "<article-path>")
+				),
+				a("Go home").withHref("/")
 			)
 		);
 	}
@@ -460,24 +449,14 @@ public final class NewsSite {
 		return dynamic(STATIC_CENTERED_CONTENT, Map.of("content", each(content)));
 	}
 	
-	private void doGeneric404(Request request) {
-		doGetHtmlStreamed(request, HttpStatus.NOT_FOUND_404, List.of(),
-			context(request, translator, Map.of(),
-				page("Error", Locale.forLanguageTag("en-US"),
-					staticContent(
-						p("\"" + request.getHttpURI().getHost() + request.getHttpURI().getDecodedPath() + "\" does not exist."),
-						a("Go home").withHref("/")
-					)
-				)
-			)
+	private void doGeneric404(Request request, Iterator<String> path) throws SQLException {
+		doDecoratedPage(HttpStatus.NOT_FOUND_404, request, pageLocale(request), "No Such Path",
+			p("No such path " + prettyUrl(request))
 		);
 	}
 	
-	private void doGeneric404(Request request, Iterator<String> path) {
-		doGeneric404(request);
-	}
-	
-	private void errorGenerator(Request request) {
+	private void exceptionPageHandler(Request request) {
+		Optional.ofNullable(request.getSession(false)).ifPresent(HttpSession::invalidate);
 		doGetHtmlStreamed(request, HttpStatus.INTERNAL_SERVER_ERROR_500, List.of(),
 			context(request, translator, Map.of(),
 				page("Error", Locale.forLanguageTag("en-US"),
