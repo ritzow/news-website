@@ -15,6 +15,7 @@ dependencies {
 	implementation 'org.eclipse.jetty.http2:http2-server:11.0.7'
 	implementation 'org.eclipse.jetty:jetty-alpn-java-server:11.0.7'
 	implementation 'com.j2html:j2html:1.5.0'
+	implementation 'org.eclipse.jetty:jetty-jmx:11.0.7'
 
 	runtimeOnly 'org.hsqldb:hsqldb:2.6.1'
 	runtimeOnly 'org.slf4j:slf4j-jdk-platform-logging:2.0.0-alpha5'

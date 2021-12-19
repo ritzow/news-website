@@ -1,11 +1,11 @@
 package net.ritzow.news;
 
 import jakarta.servlet.RequestDispatcher;
-import jakarta.servlet.ServletException;
 import jakarta.servlet.SessionTrackingMode;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
+import java.lang.management.ManagementFactory;
 import java.net.InetAddress;
 import java.nio.file.Path;
 import java.security.KeyStore;
@@ -13,7 +13,6 @@ import java.security.KeyStoreException;
 import java.security.NoSuchAlgorithmException;
 import java.security.cert.CertificateException;
 import java.util.EnumSet;
-import java.util.function.Consumer;
 import org.eclipse.jetty.alpn.server.ALPNServerConnectionFactory;
 import org.eclipse.jetty.http.CookieCompliance;
 import org.eclipse.jetty.http.HttpCompliance;
@@ -21,11 +20,9 @@ import org.eclipse.jetty.http.HttpCookie.SameSite;
 import org.eclipse.jetty.http.HttpStatus;
 import org.eclipse.jetty.http.UriCompliance;
 import org.eclipse.jetty.http2.server.HTTP2ServerConnectionFactory;
+import org.eclipse.jetty.jmx.MBeanContainer;
 import org.eclipse.jetty.server.*;
-import org.eclipse.jetty.server.handler.AbstractHandler;
-import org.eclipse.jetty.server.handler.ErrorHandler;
-import org.eclipse.jetty.server.handler.RequestLogHandler;
-import org.eclipse.jetty.server.handler.SecuredRedirectHandler;
+import org.eclipse.jetty.server.handler.*;
 import org.eclipse.jetty.server.handler.gzip.GzipHandler;
 import org.eclipse.jetty.server.session.DefaultSessionIdManager;
 import org.eclipse.jetty.server.session.SessionHandler;
@@ -76,6 +73,7 @@ public class JettySetup {
 			}
 		}));
 		server.setStopAtShutdown(true);
+		server.addBean(new MBeanContainer(ManagementFactory.getPlatformMBeanServer()));
 		return server;
 	}
 	
@@ -87,13 +85,15 @@ public class JettySetup {
 		RequestLogHandler logHandler = new RequestLogHandler();
 		logHandler.setHandler(secureHandler);
 		Logger log = LoggerFactory.getLogger(JettySetup.class);
-		logHandler.setRequestLog((request, response) -> log.info(
+		logHandler.setRequestLog((request, response) -> log.atInfo().log(
 			request.getRemoteInetSocketAddress().getAddress().getHostAddress()
 				+ " " + request.getMethod()
 				+ " " + request.getHttpURI().asString()
 				+ " \"" + HttpStatus.getCode(response.getStatus()).getMessage()
 				+ "\" (" + response.getStatus() + ")"));
-		return logHandler;
+		StatisticsHandler statsHandler = new StatisticsHandler();
+		statsHandler.setHandler(logHandler);
+		return statsHandler;
 	}
 	
 	private static Handler setupSessionInfrastructure(Server server, Handler inner) {
