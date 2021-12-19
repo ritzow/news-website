@@ -26,9 +26,9 @@ dependencies {
 }
 
 compileJava {
+	options.javaModuleMainClass.set('net.ritzow.news.RunSite')
 	options.encoding 'UTF-8'
 }
-
 
 import java.nio.file.Files
 import java.nio.file.Path
@@ -53,6 +53,8 @@ def static isOutOfDate(Path inputPath, Path outputPath) {
 
 jar {
 	outputs.upToDateWhen { false }
+
+	manifest.attributes('Main-Class': 'net.ritzow.news.RunSite')
 
 	def outputDir = project.sourceSets.main.output.resourcesDir.toPath()
 
