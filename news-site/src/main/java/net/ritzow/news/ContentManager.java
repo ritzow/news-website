@@ -2,15 +2,27 @@ package net.ritzow.news;
 
 import com.zaxxer.hikari.HikariDataSource;
 import java.io.*;
+import java.nio.ByteBuffer;
+import java.nio.CharBuffer;
+import java.nio.charset.CharacterCodingException;
 import java.nio.charset.StandardCharsets;
+import java.security.NoSuchAlgorithmException;
+import java.security.SecureRandom;
+import java.security.spec.InvalidKeySpecException;
 import java.sql.*;
 import java.util.*;
 import java.util.Map.Entry;
 import java.util.function.Function;
+import javax.crypto.SecretKeyFactory;
+import javax.crypto.spec.PBEKeySpec;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import static java.util.Map.entry;
 
 public final class ContentManager {
+	private static final Logger LOG = LoggerFactory.getLogger(ContentManager.class);
+	
 	private final HikariDataSource db;
 	
 	public static ContentManager ofMemoryDatabase() throws SQLException {
@@ -19,9 +31,12 @@ public final class ContentManager {
 	
 	private ContentManager() throws SQLException {
 		HikariDataSource pool = new HikariDataSource();
-		/* TODO log to SLF4J */
+		/* TODO log to SLF4J??? disable? */
 		pool.setLogWriter(new PrintWriter(System.err));
 		pool.setJdbcUrl("jdbc:hsqldb:mem:test");
+		pool.setMinimumIdle(0);
+		pool.setIdleTimeout(0);
+		pool.setMaximumPoolSize(50);
 		//pool.setJdbcUrl("jdbc:h2:mem:");
 		pool.setDataSourceProperties(properties(
 			entry("user", "SA")
@@ -73,7 +88,14 @@ public final class ContentManager {
 				FOREIGN KEY (locale) REFERENCES locales(id),
 				UNIQUE (id, locale, revision)
 			)
+			""",
 			"""
+			CREATE TABLE accounts (
+				id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+				pwHash BINARY VARYING(512) NOT NULL,
+				pwSalt BINARY VARYING(16) NOT NULL,
+				username VARCHAR(64) NOT NULL UNIQUE,
+			)"""
 		);
 		
 		uploadLocales();
@@ -158,6 +180,14 @@ public final class ContentManager {
 						AND articles_content.revision = result.max_revision
 				);
 			END
+			""",
+			"""
+			CREATE PROCEDURE new_account(IN in_username VARCHAR(64), IN in_pwSalt BINARY VARYING(16), IN in_pwHash BINARY VARYING(512), OUT id INTEGER)
+				MODIFIES SQL DATA
+			BEGIN ATOMIC
+				INSERT INTO accounts (username, pwSalt, pwHash) VALUES (in_username, in_pwSalt, in_pwHash);
+				SET id = IDENTITY();
+			END
 			"""
 		);
 	}
@@ -173,22 +203,24 @@ public final class ContentManager {
 				}
 			}
 		} catch(BatchUpdateException e) {
-			System.err.println(e.getClass().getCanonicalName() + ": " + e.getMessage());
+			StringBuilder build = new StringBuilder(e.getClass().getCanonicalName()).append(": ").append(e.getMessage()).append('\n');
 			Iterator<String> lines = sql[e.getUpdateCounts().length].lines().iterator();
 			int line = 1;
 			while(lines.hasNext()) {
-				System.err.printf("%5d %s%n", line, lines.next());
+				build.append(String.format("%5d %s%n", line, lines.next()));
 				line++;
 			}
-			if(e.getCause() != null) {
+			/*if(e.getCause() != null) {
 				System.err.print("Caused by: ");
 				e.getCause().printStackTrace();
-			}
+			}*/
+			throw new RuntimeException(build.toString(), e);
 		} catch(SQLException e) {
 			var it = e.iterator();
 			while(it.hasNext()) {
 				it.next().printStackTrace();
 			}
+			throw new RuntimeException(e);
 		}
 	}
 	
@@ -213,9 +245,7 @@ public final class ContentManager {
 		return db.getConnection();
 	}
 	
-	public record Article3(String urlname, String title) {
-	
-	}
+	public record Article3(String urlname, String title) {}
 	
 	public List<Article3> getArticlesForLocale(Locale locale) throws SQLException, IOException {
 		try(var db = this.db.getConnection()) {
@@ -270,6 +300,67 @@ public final class ContentManager {
 				st.setBinaryStream(4, new ByteArrayInputStream(markdown.getBytes(StandardCharsets.UTF_8)));
 				st.execute();
 			}
+		}
+	}
+	
+	/* Does not clear password parameter utf8 */
+	public void newAccount(String username, byte[] utf8) throws SQLException {
+		try(var db = this.db.getConnection()) {
+			try(var st = db.prepareCall("call new_account(?, ?, ?, ?)")) {
+				st.setString(1, username);
+				
+				/* For hashing: https://stackoverflow.com/a/2861125/2442171 */
+				byte[] salt = new byte[16];
+				SecureRandom.getInstanceStrong().nextBytes(salt);
+				st.setBytes(2, salt);
+				st.setBytes(3, passwordHash(utf8, salt));
+				st.registerOutParameter(4, Types.INTEGER);
+				st.execute();
+			} catch(NoSuchAlgorithmException e) {
+				throw new RuntimeException(e);
+			}
+			
+			/*try(var st = db.prepareStatement("SELECT pwHash FROM accounts LIMIT 1")) {
+				try(var res = st.executeQuery()) {
+					res.next();
+					System.out.println(Base64.getEncoder().withoutPadding().encodeToString(res.getBytes("pwHash")));	
+				}
+			}*/
+		}
+	}
+	
+	public boolean authenticateLogin(String username, byte[] password) throws SQLException {
+		try(var db = this.db.getConnection()) {
+			try(var st = db.prepareStatement("SELECT pwSalt, pwHash FROM accounts WHERE username = ?")) {
+				st.setString(1, username);
+				try(var rs = st.executeQuery()) {
+					if(rs.next()) {
+						/* PASSWORD AUTHENTICATION!!! */
+						return Arrays.equals(passwordHash(password, rs.getBytes("pwSalt")), rs.getBytes("pwHash"));
+					}
+					return false;
+				}
+			}
+		}
+	}
+	
+	private static byte[] passwordHash(byte[] passwordUtf8, byte[] salt) {
+		try {
+			CharBuffer utf16 = CharsetUtil.decoder(StandardCharsets.UTF_8).decode(ByteBuffer.wrap(passwordUtf8));
+			char[] password = new char[utf16.length()];
+			utf16.get(password);
+			/* TODO use more iterations? */
+			PBEKeySpec spec = new PBEKeySpec(password, salt, 100_000, 512);
+			Arrays.fill(password, '\0');
+			utf16.flip();
+			while(utf16.hasRemaining()) {
+				utf16.put('\0');
+			}
+			byte[] hash = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA512").generateSecret(spec).getEncoded();
+			spec.clearPassword();
+			return hash;
+		} catch(CharacterCodingException | InvalidKeySpecException | NoSuchAlgorithmException e) {
+			throw new RuntimeException(e);
 		}
 	}
 	
