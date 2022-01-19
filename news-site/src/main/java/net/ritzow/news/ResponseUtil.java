@@ -50,7 +50,7 @@ public class ResponseUtil {
 		response.setHeader(HttpHeader.TRANSFER_ENCODING, "chunked");
 		response.setContentType(contentType);
 		response.setHeader(HttpHeader.CACHE_CONTROL, "no-store");
-		response.setHeader(HttpHeader.REFERER, "no-referrer");
+		response.setHeader("Referrer-Policy", "no-referrer");
 	}
 	
 	private static final Pattern PATH_COMPONENT = Pattern.compile("/");

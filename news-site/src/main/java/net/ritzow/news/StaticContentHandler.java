@@ -52,7 +52,7 @@ class StaticContentHandler implements ContextRequestConsumer<IOException> {
 		/* Let browser cache for 10 minutes but also always check that there were no changes. */
 		baseResponse.getHttpFields().addCSV(HttpHeader.CACHE_CONTROL, "max-age=" + Duration.ofMinutes(10).toSeconds(), "no-cache");
 		//TODO referrer should be added elsewhere
-		baseResponse.setHeader(HttpHeader.REFERER, "no-referrer");
+		baseResponse.setHeader("Referrer-Policy", "no-referrer");
 		baseResponse.setHeader(HttpHeader.ETAG, etag);
 		
 		if(baseResponse.getStatus() != HttpStatus.NOT_MODIFIED_304) {
