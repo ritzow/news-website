@@ -38,13 +38,24 @@ public class JettySetup {
 		void accept(Request request) throws T;
 	}
 	
-	public static Server newStandardServer(InetAddress bind, boolean requireSni,
-			Path keyStore, String keyStorePassword, RequestConsumer<? extends Exception> mainHandler, RequestConsumer<? extends Exception> errorHandler)
-			throws CertificateException, IOException, KeyStoreException, NoSuchAlgorithmException {
-		QueuedThreadPool pool = new QueuedThreadPool(Runtime.getRuntime().availableProcessors());
+	public static Server newStandardServer(boolean requireSni, Path keyStore, 
+			String keyStorePassword, 
+			RequestConsumer<? extends Exception> mainHandler, RequestConsumer<? extends Exception> errorHandler, 
+			InetAddress... bind)
+			throws CertificateException, 
+			IOException, 
+			KeyStoreException, 
+			NoSuchAlgorithmException {
+		
+		QueuedThreadPool pool = new QueuedThreadPool();
 		pool.setName("pool");
 		Server server = new Server(pool);
-		setupConnectors(bind, requireSni, server, keyStore, keyStorePassword);
+		
+		for(var addr : bind) {
+			server.addConnector(httpPlaintextConnector(server, addr, httpConfig(requireSni)));
+			server.addConnector(httpSslConnector(server, addr, httpConfig(requireSni), keyStore, keyStorePassword));
+		}
+
 		var onError = new ErrorHandler() {
 			@Override
 			public void handle(String target, Request baseRequest,
@@ -60,6 +71,7 @@ public class JettySetup {
 				}
 			}
 		};
+		
 		server.setErrorHandler(onError);
 		server.setHandler(setupHandlers(server, new AbstractHandler() {
 			@Override
@@ -106,15 +118,48 @@ public class JettySetup {
 		handler.setSessionCookie("session");
 		handler.setHttpOnly(true);
 		handler.setSecureRequestOnly(true);
-		handler.setSameSite(SameSite.STRICT);
+		//handler.setSameSite(SameSite.STRICT);
+		handler.setSameSite(SameSite.NONE); /* TODO test, is this correct or a vulnerability? will allow other sites to access sensitive info */
 		handler.setSessionTrackingModes(EnumSet.of(SessionTrackingMode.COOKIE));
 		handler.setHandler(inner);
 		return handler;
 	}
 	
-	private static void setupConnectors(InetAddress bind, boolean requireSni,
-			Server server, Path keyStore, String keyStorePassword) throws CertificateException,
-			IOException, KeyStoreException, NoSuchAlgorithmException {
+	private static ServerConnector httpPlaintextConnector(Server server, InetAddress bind, HttpConfiguration config) {
+		var http1 = new HttpConnectionFactory(new HttpConfiguration(config));
+		@SuppressWarnings("all") var http11Insecure = new ServerConnector(server, http1);
+		setCommonProperties(http11Insecure, bind, 80);
+		return http11Insecure;
+	}
+	
+	private static ServerConnector httpSslConnector(Server server, InetAddress bind, HttpConfiguration config, Path keyStore, String keyStorePassword) 
+			throws CertificateException, KeyStoreException, IOException, NoSuchAlgorithmException {
+		var http1 = new HttpConnectionFactory(new HttpConfiguration(config));
+		var http2 = new HTTP2ServerConnectionFactory(new HttpConfiguration(config));
+		var alpn = new ALPNServerConnectionFactory("h2", "http/1.1");
+		alpn.setDefaultProtocol(http2.getProtocol());
+		SslContextFactory.Server sslFactory = new SslContextFactory.Server();
+		/* Create PKCS12 file: https://gist.github.com/novemberborn/4eb91b0d166c27c2fcd4 */
+		KeyStore ks = KeyStore.getInstance(keyStore.toFile(), keyStorePassword.toCharArray());
+		sslFactory.setKeyStore(ks);
+		sslFactory.setKeyStorePassword(keyStorePassword);
+		var ssl = new SslConnectionFactory(sslFactory, alpn.getProtocol());
+		/* Handlers are found using string lookups in the ConnectionFactory list of the ServerConnector */
+		@SuppressWarnings("all") var httpSecure = new ServerConnector(server, ssl, alpn, http2, http1);
+		setCommonProperties(httpSecure, bind, 443);
+		return httpSecure;
+	}
+	
+	private static void setCommonProperties(ServerConnector con, InetAddress bind, int port) {
+		con.setInheritChannel(false);
+		con.setAcceptedTcpNoDelay(false);
+		con.setReuseAddress(false);
+		con.setReusePort(false);
+		con.setHost(bind.getHostAddress());
+		con.setPort(port);
+	}
+	
+	private static HttpConfiguration httpConfig(boolean requireSni) {
 		var httpConfig = new HttpConfiguration();
 		httpConfig.setSendServerVersion(false);
 		httpConfig.setSecureScheme("https");
@@ -123,28 +168,13 @@ public class JettySetup {
 		httpConfig.setUriCompliance(UriCompliance.RFC3986_UNAMBIGUOUS);
 		httpConfig.setRequestCookieCompliance(CookieCompliance.RFC6265);
 		httpConfig.setResponseCookieCompliance(CookieCompliance.RFC6265);
+		
 		var secureCustomizer = new SecureRequestCustomizer();
 		secureCustomizer.setStsMaxAge(3600);
 		secureCustomizer.setStsIncludeSubDomains(true);
 		secureCustomizer.setSniHostCheck(requireSni);
 		httpConfig.addCustomizer(secureCustomizer);
-		var http1 = new HttpConnectionFactory(httpConfig);
-		var http11Insecure = new ServerConnector(server, http1);
-		http11Insecure.setHost(bind.getHostAddress());
-		http11Insecure.setPort(80);
-		var http2Config = new HttpConfiguration(httpConfig);
-		var http2 = new HTTP2ServerConnectionFactory(http2Config);
-		var alpn = new ALPNServerConnectionFactory(http2.getProtocol(), http1.getProtocol());
-		alpn.setDefaultProtocol(http2.getProtocol());
-		SslContextFactory.Server sslFactory = new SslContextFactory.Server();
-		/* Create PKCS12 file: https://gist.github.com/novemberborn/4eb91b0d166c27c2fcd4 */
-		KeyStore ks = KeyStore.getInstance(keyStore.toFile(), keyStorePassword.toCharArray());
-		sslFactory.setKeyStore(ks);
-		sslFactory.setKeyStorePassword(keyStorePassword);
-		var ssl = new SslConnectionFactory(sslFactory, alpn.getProtocol());
-		var httpSecure = new ServerConnector(server, ssl, alpn, http2, http1);
-		httpSecure.setHost(bind.getHostAddress());
-		httpSecure.setPort(443);
-		server.setConnectors(new Connector[] { http11Insecure, httpSecure });
+		
+		return httpConfig;
 	}
 }

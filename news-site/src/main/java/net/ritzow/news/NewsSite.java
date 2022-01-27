@@ -47,6 +47,7 @@ public final class NewsSite {
 	private final Server server;
 	private final ContentManager cm;
 	private final Translator<String> translator;
+	private final Set<String> peers;
 	
 	public static NewsSite start(InetAddress bind, boolean requireSni, Path keyStore, String keyStorePassword) throws Exception {
 		var server = new NewsSite(bind, requireSni, keyStore, keyStorePassword);
@@ -63,13 +64,9 @@ public final class NewsSite {
 		cm = ContentManager.ofMemoryDatabase();
 		ContentUtil.genArticles(cm);
 		translator = Translator.ofProperties(properties("/lang/welcome.properties"));
+		this.peers = peers;
 		server = JettySetup.newStandardServer(
-			bind,
-			requireSni,
-			keyStore,
-			keyStorePassword,
-			route()::accept,
-			this::exceptionPageHandler
+			requireSni, keyStore, keyStorePassword, route()::accept, this::exceptionPageHandler, bind
 		);
 	}
 	
