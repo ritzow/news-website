@@ -18,9 +18,11 @@ import java.time.format.DateTimeFormatter;
 import java.time.format.FormatStyle;
 import java.util.*;
 import java.util.function.Function;
+import java.util.stream.Collectors;
 import net.ritzow.news.ContentManager.Article;
 import org.eclipse.jetty.http.HttpHeader;
 import org.eclipse.jetty.http.HttpMethod;
+import org.eclipse.jetty.http.HttpScheme;
 import org.eclipse.jetty.http.HttpStatus;
 import org.eclipse.jetty.server.Request;
 import org.eclipse.jetty.server.Server;
@@ -29,19 +31,21 @@ import org.eclipse.jetty.util.Callback;
 import static j2html.TagCreator.*;
 import static java.util.Map.entry;
 import static net.ritzow.news.Forms.*;
+import static net.ritzow.news.PageTemplate.head;
 import static net.ritzow.news.PageTemplate.*;
 import static net.ritzow.news.ResourceUtil.open;
 import static net.ritzow.news.ResourceUtil.properties;
 import static net.ritzow.news.ResponseUtil.*;
 
-/* TODO use integrity attribute to verify content if delivered via CDN and use crossorigin="anonymous" */
-//TODO set loading="lazy" on img HTML elements.
-//TODO look into using noscript if ever using javascript
-//TODO use interactive elements https://developer.mozilla.org/en-US/docs/Web/HTML/Element#interactive_elements
-//TODO use <details> for accordion items
-//TODO could use <button> with form submission for the home button to prevent link dragging? not very idiomatic
-//TODO create Handler that handles language-switch POST requests and wrap newPath call
-//TODO use Link header to prefetch stylesheet and font, add parameter to doGetHtmlStreamed
+// TODO use integrity attribute to verify content if delivered via CDN and use crossorigin="anonymous"
+// TODO set loading="lazy" on img HTML elements.
+// TODO look into using noscript if ever using javascript
+// TODO use interactive elements https://developer.mozilla.org/en-US/docs/Web/HTML/Element#interactive_elements
+// TODO use <details> for accordion items
+// TODO could use <button> with form submission for the home button to prevent link dragging? not very idiomatic
+// TODO create Handler that handles language-switch POST requests and wrap newPath call
+// TODO use Link header to prefetch stylesheet and font, add parameter to doGetHtmlStreamed
+// TODO use <link rel="preload"> for pinging other webpages during a page load. use 204 response to indicate no content
 
 public final class NewsSite {
 	private final Server server;
@@ -49,13 +53,13 @@ public final class NewsSite {
 	private final Translator<String> translator;
 	private final Set<String> peers;
 	
-	public static NewsSite start(InetAddress bind, boolean requireSni, Path keyStore, String keyStorePassword) throws Exception {
-		var server = new NewsSite(bind, requireSni, keyStore, keyStorePassword);
+	public static NewsSite start(boolean requireSni, Path keyStore, String keyStorePassword, Set<String> peers, InetAddress... bind) throws Exception {
+		var server = new NewsSite(requireSni, keyStore, keyStorePassword, peers, bind);
 		server.server.start();
 		return server;
 	}
 	
-	private NewsSite(InetAddress bind, boolean requireSni, Path keyStore, String keyStorePassword) throws
+	private NewsSite(boolean requireSni, Path keyStore, String keyStorePassword, Set<String> peers, InetAddress... bind) throws
 			CertificateException,
 			IOException,
 			KeyStoreException,
@@ -76,15 +80,63 @@ public final class NewsSite {
 				this::mainPageGenerator,
 				this::doGeneric404,
 				entry("article", this::articlePageProcessor),
-				entry("upload", this::uploadGenerator),
 				entry("shutdown", this::shutdownPage),
 				entry("opensearch", new StaticContentHandler(open("/xml/opensearch.xml"),
 					"application/opensearchdescription+xml")),
 				entry("style.css", new StaticContentHandler(open("/css/global.css"), "text/css")),
 				entry("icon.svg", new StaticContentHandler(open("/image/icon.svg"), "image/svg+xml")),
-				entry("opensans.ttf", new StaticContentHandler(open("/font/OpenSans-Regular.ttf"), "font/ttf"))
+				entry("opensans.ttf", new StaticContentHandler(open("/font/OpenSans-Regular.ttf"), "font/ttf")),
+				entry("session", this::sessionPage)
 			)
 		);
+	}
+	
+	//TODO this only works if privacy mode is off, because it blocks cross-site cookies.
+	//TODO maybe use redirects instead?
+	private void sessionPage(Request request, Iterator<String> path) throws IOException {
+		
+		switch(HttpMethod.fromString(request.getMethod())) {
+			case GET, HEAD -> {
+				String origin = request.getHttpFields().get(HttpHeader.ORIGIN);
+				
+				if(origin != null) {
+					URI originUrl = URI.create(origin);
+					
+					if(HttpScheme.HTTPS.is(originUrl.getScheme()) && peers.contains(originUrl.getHost())) {
+						request.getResponse().getHttpFields()
+							.add("Access-Control-Allow-Methods", "GET")
+							.add("Access-Control-Allow-Origin", origin)
+							.add("Access-Control-Allow-Credentials", "true")
+							.add("Access-Control-Allow-Headers", HttpHeader.COOKIE.asString())
+							.add(HttpHeader.VARY, HttpHeader.ORIGIN.asString());
+						doSessionInitResponse(request);
+					} else {
+						doEmptyResponse(request, HttpStatus.UNAUTHORIZED_401);
+					}
+					return;
+				}
+				
+				/*var site = request.getHttpFields().getField("Sec-Fetch-Site");
+				
+				if(site != null && site.is("same-origin")) {
+					doSessionInitResponse(request);
+					return;
+				}*/
+				
+				doEmptyResponse(request, HttpStatus.UNAUTHORIZED_401);
+			}
+		}
+	}
+	
+	private static void doSessionInitResponse(Request request) throws IOException {
+		/* Shared session handler between connectors */
+		var session = request.getSessionHandler().getSession(request.getParameter("id"));
+		if(session != null) {
+			request.setSession(session);
+			var cookie = request.getSessionHandler().getSessionCookie(session, "/", true);
+			request.getResponse().addCookie(cookie);
+		}
+		doEmptyResponse(request, HttpStatus.NO_CONTENT_204);
 	}
 	
 	@RequiresNamedHtml({"full-content", "time", "heap"})
@@ -105,9 +157,9 @@ public final class NewsSite {
 	);
 
 	@RequiresDynamicHtml
-	private static DomContent page(String title, Locale locale, DomContent fullContent) {
+	private DomContent page(Request request, String title, Locale locale, DomContent fullContent) {
 		return html().withLang(locale.toLanguageTag()).with(
-			PageTemplate.head(title),
+			head(request, title, peers.stream().filter(host -> !host.equals(request.getHttpURI().getHost())).collect(Collectors.toSet())),
 			dynamic(PAGE_BODY_HTML, Map.of(
 				"full-content", fullContent,
 				"time", rawHtml(serverTime(locale)),
@@ -203,7 +255,7 @@ public final class NewsSite {
 		var button = button()
 			.withType("submit")
 			.withName("lang-select")
-			.withValue(locale.toLanguageTag() /*+ ContentUtil.generateGibberish(RandomGenerator.getDefault(), false, 1000, 10)*/)
+			.withValue(locale.toLanguageTag())
 			.withClass("lang-button").with(
 				span(locale.getDisplayLanguage(locale))
 			);
@@ -215,8 +267,8 @@ public final class NewsSite {
 	}
 	
 	private static final DomContent LOGIN_FORM_CONTENT = freeze(
-		input().withName("username").withType("text").attr("autocomplete", "username").withPlaceholder("Username"),
-		input().withName("password").withType("password").attr("autocomplete", "current-password").withPlaceholder("Password"),
+		input().withClasses("text-field").withName("username").withType("text").attr("autocomplete", "username").withPlaceholder("Username"),
+		input().withClasses("text-field").withName("password").withType("password").attr("autocomplete", "current-password").withPlaceholder("Password"),
 		label(input().withName("login-remember").withType("checkbox"), rawHtml("Remember me")),
 		button("Login").withName("login-action").withValue("login"),
 		button("Sign up").withName("login-action").withValue("signup")
@@ -230,11 +282,9 @@ public final class NewsSite {
 	}
 
 	private static DomContent loggedInForm(String username) {
-		return each(
+		return postForm().withClass("logged-in-form").with(
 			text(username),
-			postForm().withClass("logged-in-form").with(
-				button("Log out").withName("logout").withValue("logout")
-			)
+			button("Log out").withName("logout").withValue("logout")
 		);
 	}
 	
@@ -275,6 +325,10 @@ public final class NewsSite {
 		FormField.required("lang-select", Forms::stringReader)
 	);
 	
+	private static final FormWidget LOGGED_IN_FORM = FormWidget.of(
+		FormField.required("logout", Forms::stringReader)
+	);
+	
 	private void mainPageGenerator(Request request) {
 		mainPageGenerator(request, Collections.emptyIterator());
 	}
@@ -309,7 +363,8 @@ public final class NewsSite {
 			/* https://security.stackexchange.com/a/133945 */
 			case POST -> doFormResponse(request,
 				entry(LOGIN_FORM, values -> doLoginForm(request, values)),
-				entry(LANG_SELECT_FORM, values -> doLangSelectForm(request, values))
+				entry(LANG_SELECT_FORM, values -> doLangSelectForm(request, values)),
+				entry(LOGGED_IN_FORM, values -> doLoggedInForm(request ,values))
 			);
 		}
 	}
@@ -342,6 +397,13 @@ public final class NewsSite {
 			} finally {
 				Arrays.fill(password, (byte)0);
 			}
+		}
+		return request.getHttpURI().toURI();
+	}
+	
+	private static URI doLoggedInForm(Request request, Function<String, Optional<Object>> values) {
+		if(values.apply("logout").filter(val -> val.equals("logout")).isPresent()) {
+			HttpUser.getExistingSession(request).ifPresent(session -> session.user(null));
 		}
 		return request.getHttpURI().toURI();
 	}
@@ -385,44 +447,6 @@ public final class NewsSite {
 		);
 	}
 	
-	private void uploadGenerator(Request request, Iterator<String> path) throws SQLException {
-		switch(HttpMethod.fromString(request.getMethod())) {
-			case GET, HEAD -> doGetUploadPage(request);
-			case POST -> {
-				var result = doProcessForms(request, name -> switch(name) {
-					case "lang-select", "username", "comment", "login-action", "login-form" -> stringReader();
-					case "password" -> secretBytesReader();
-					case "upload" -> fileReader();
-					default -> throw new RuntimeException("Unknown form field \"" + name + "\"");
-				});
-				
-				result.apply("lang-select").ifPresent(lang -> processLangForm(request, (String)lang));
-				result.apply("password").ifPresent(data -> Arrays.fill((byte[])data, (byte)0));
-				
-				Locale locale = pageLocale(request);
-				
-				Optional<String> loginAction = result.apply("login-action").map(o -> (String)o);
-				
-				switch(loginAction.orElse("other")) {
-					case "login" -> {
-						Optional<String> username = result.apply("username").map(o -> (String)o);
-						doDecoratedPage(HttpStatus.OK_200, request, locale, "Upload", p(username.orElse("No username provided")));
-					}
-					
-					default -> throw new RuntimeException("not implemented");
-					
-					case "other" -> doGetUploadPage(request);
-				}
-			}
-			
-			default -> throw new RuntimeException("Unsupported HTTP method");
-		}
-	}
-	
-	private void doGetUploadPage(Request request) throws SQLException {
-		doDecoratedPage(HttpStatus.OK_200, request, pageLocale(request), "Upload", mainForm());
-	}
-	
 	private void articlePageProcessor(Request request, Iterator<String> path) throws SQLException, IOException {
 		switch(HttpMethod.fromString(request.getMethod())) {
 			case GET, HEAD -> {
@@ -436,7 +460,7 @@ public final class NewsSite {
 					return;
 				}
 				
-				String urlname = name.get();
+				String urlname = name.orElseThrow();
 				List<Locale> supported = cm.getArticleLocales(urlname);
 				
 				if(path.hasNext()) {
@@ -474,7 +498,8 @@ public final class NewsSite {
 			
 			case POST -> doFormResponse(request, 
 				entry(LOGIN_FORM, values -> doLoginForm(request, values)),
-				entry(LANG_SELECT_FORM, values -> doLangSelectForm(request, values))
+				entry(LANG_SELECT_FORM, values -> doLangSelectForm(request, values)),
+				entry(LOGGED_IN_FORM, values -> doLoggedInForm(request, values))
 			);
 		}
 	}
@@ -482,7 +507,7 @@ public final class NewsSite {
 	private void doDecoratedPage(int status, Request request, Locale mainLocale, String title, DomContent body) throws SQLException {
 		doGetHtmlStreamed(request, status, List.of(mainLocale),
 			context(request, translator, Map.of(),
-				page(title, mainLocale,
+				page(request, title, mainLocale,
 					content(
 						header(request),
 						body
@@ -541,7 +566,7 @@ public final class NewsSite {
 		Optional.ofNullable(request.getSession(false)).ifPresent(HttpSession::invalidate);
 		doGetHtmlStreamed(request, HttpStatus.INTERNAL_SERVER_ERROR_500, List.of(),
 			context(request, translator, Map.of(),
-				page("Error", Locale.forLanguageTag("en-US"),
+				page(request, "Error", Locale.forLanguageTag("en-US"),
 					staticContent(
 						p("Sorry, there was an unexpected error!"),
 						a("Go home").withHref("/")

@@ -10,6 +10,7 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Stream;
 import org.eclipse.jetty.server.Request;
 
@@ -149,12 +150,24 @@ public class PageTemplate {
 				.withContent("width=device-width,initial-scale=1"),
 			meta().withCharset("utf-8"),
 			meta().withName("referrer").withContent("no-referrer")
-		)
+		),
+		//TODO this can be used to login to other trusted domains, can send multiple.
+		named("session-init")
 	);
 	
 	@RequiresDynamicHtml
-	public static DomContent head(String title) {
-		return dynamic(HEAD_HTML, Map.of("title", title(title)));
+	public static DomContent head(Request request, String title, Set<String> peers) {
+		return dynamic(HEAD_HTML, Map.of(
+			"title", title(title),
+			/* TODO disable these if already logged in at peer websites */
+			"session-init", request.getSession(false) != null ? eachStreamed(
+				peers.stream().map(peer -> link()
+					.withRel("preload")
+					.withHref("https://" + peer + "/session?id=" + request.getSession(false).getId())
+					.attr("as", "fetch")
+					.attr("crossorigin", "use-credentials"))
+			) : each()
+		));
 	}
 	
 	public static FormTag mainForm() {

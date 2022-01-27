@@ -79,12 +79,17 @@ body > .page-footer {
 	flex: 0 1 auto;
 }
 
+/* Put all header bar elements on one line and align them */
+.header > * {
+	display: inline;
+	vertical-align: middle;
+}
+
 .headerless-content {
 	margin-top: var(--pad-big);
 }
 
 .logo {
-	display: inline;
 	white-space: nowrap;
 	text-decoration: none;
 	font-size: 2rem;
@@ -98,12 +103,6 @@ body > .page-footer {
 	margin-left: auto;
 	margin-right: auto;
 	pointer-events: none;
-}
-
-/* Language selection form */
-.lang-selector {
-	display: inline;
-	vertical-align: middle;
 }
 
 .current-locale {
@@ -139,7 +138,10 @@ body > .page-footer {
 
 .login-form {
 	display: inline;
-	//vertical-align: middle;
+}
+
+.login-form > * {
+	margin-left: var(--pad);
 }
 
 @media (hover: hover) {
@@ -252,7 +254,20 @@ body > .page-footer {
 	font-weight: normal;
 }
 
-.form-element {
+.text-field {
+	background-color: #cccccc;
+	border-top: none;
+	border-left: none;
+	border-right: none;
+	border-bottom: 2px solid black;
+}
+
+.text-field:focus-visible {
+	outline: none;
+	background-color: #7a7a7a;
+}
+
+/* .form-element {
 	width: 100%;
 	padding: 10px;
 	box-sizing: border-box;
@@ -274,7 +289,7 @@ body > .page-footer {
 
 .form-element:invalid {
 	border-bottom: 2px solid red;
-}
+} */
 
 .markdown {
 	all: initial;

@@ -39,6 +39,14 @@ public class ResponseUtil {
 		}
 	}
 	
+	public static void doEmptyResponse(Request request, int status) throws IOException {
+		skipInput(request);
+		request.getResponse().setStatus(status);
+		request.getResponse().setContentLength(0);
+		request.getResponse().setHeader(HttpHeader.CACHE_CONTROL, "no-store");
+		request.setHandled(true);
+	}
+	
 	public static void skipInput(Request request) throws IOException {
 		/* might be inefficient? could throw exception if request body larger than 2GB */
 		//request.getHttpInput().readAllBytes();
