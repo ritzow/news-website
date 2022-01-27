@@ -1,15 +1,16 @@
-buildscript {
-	repositories {
-		mavenCentral()
-	}
-
-	dependencies {
-		/* Any build script libraries go here */
-	}
-}
+//buildscript {
+//	repositories {
+//		mavenCentral()
+//	}
+//
+//	dependencies {
+//		/* Any build script libraries go here */
+//	}
+//}
 
 plugins {
 	id 'java'
+//	id 'net.ritzow'
 }
 
 repositories {
@@ -25,7 +26,6 @@ dependencies {
 	implementation 'com.j2html:j2html:1.5.0'
 	implementation 'org.commonmark:commonmark:0.18.0'
 	implementation 'com.zaxxer:HikariCP:5.0.0'
-	implementation 'com.j2html:j2html:1.5.0'
 
 	runtimeOnly 'org.hsqldb:hsqldb:2.6.1'
 	runtimeOnly 'org.slf4j:slf4j-jdk-platform-logging:2.0.0-alpha5'
@@ -93,9 +93,11 @@ Path outputDir = sourceSets.main.output.resourcesDir.toPath()
 task compileScss {
 	Path inputCss = current.projectDir.toPath().resolve('src/main/css/global.scss')
 	Path outputCss = outputDir.resolve('css/global.css')
-
+	
+	inputs.file inputCss.toFile()
 	outputs.dir outputDir.toFile()
 	outputs.file outputCss.toFile()
+	outputs.cacheIf { true }
 	
 	outputs.upToDateWhen { !isOutOfDate(inputCss, outputCss) }
 	
@@ -132,8 +134,6 @@ task compileIcon {
 
 jar {
 	dependsOn downloadFont, compileScss, compileIcon
-
-	manifest.attributes('Main-Class': 'net.ritzow.news.RunSite')
 	
 	from('src/main') {
 		include 'xml/**', 'lang/**'
@@ -150,11 +150,11 @@ task bundle {
 	dependsOn jar
 	
 	outputs.dir layout.buildDirectory.asFile
-	
+
 	doLast {
 		Stream.concat(
 			Stream.of(current.jar.archiveFile.orNull.asFile),
-			(Stream<File>)current.sourceSets.main.runtimeClasspath.files.stream().filter(File::isFile)
+			(Stream<File>)project.sourceSets.getByName("main").runtimeClasspath.files.stream().filter(File::isFile)
 		).forEach { file -> project.logger.lifecycle '{}', file.toPath().getFileName() }
 	}
 }
@@ -173,15 +173,14 @@ test {
 tasks.create('run', JavaExec) {
 	dependsOn jar
 
-	mainClass.set('net.ritzow.news.RunSite')
 	mainModule.set('net.ritzow.news')
 
 	defaultCharacterEncoding = 'UTF-8'
 
 	/* Class-path/module-path from the main jar and the jar dependencies (excluding any folder dependencies) */
 	classpath = project.objects.fileCollection().from(Stream.concat(
-			Stream.of(current.jar.archiveFile.orNull.asFile),
-			current.sourceSets.main.runtimeClasspath.files.stream().filter(File::isFile)
+		Stream.of(current.jar.archiveFile.orNull.asFile),
+		(Stream<File>)current.sourceSets.main.runtimeClasspath.files.stream().filter(File::isFile)
 	).toList())
 
 	jvmArgs '-Dnet.ritzow.certs=' + properties.getProperty('keystore.file'),
@@ -189,5 +188,6 @@ tasks.create('run', JavaExec) {
 			'-Dnet.ritzow.debug=true',
 			'-Dorg.slf4j.simpleLogger.defaultLogLevel=' + debugLevel,
 			'-Dorg.slf4j.simpleLogger.log.org.eclipse.jetty=info',
+			'-Dorg.slf4j.simpleLogger.log.com.zaxxer.hikari.pool.HikariPool=info',
 			'-Xlog:all=warning:stderr'
 }
