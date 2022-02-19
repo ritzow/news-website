@@ -20,6 +20,7 @@ import java.util.*;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import net.ritzow.news.ContentManager.Article;
+import net.ritzow.news.page.Login;
 import org.eclipse.jetty.http.HttpHeader;
 import org.eclipse.jetty.http.HttpMethod;
 import org.eclipse.jetty.http.HttpScheme;
@@ -30,11 +31,13 @@ import org.eclipse.jetty.server.Server;
 import static j2html.TagCreator.*;
 import static java.util.Map.entry;
 import static net.ritzow.news.Forms.*;
+import static net.ritzow.news.JettySetup.newStandardServer;
 import static net.ritzow.news.PageTemplate.head;
 import static net.ritzow.news.PageTemplate.*;
-import static net.ritzow.news.ResourceUtil.open;
+import static net.ritzow.news.ResourceUtil.jarResourceOpener;
 import static net.ritzow.news.ResourceUtil.properties;
 import static net.ritzow.news.ResponseUtil.*;
+import static net.ritzow.news.StaticContentHandler.staticContent;
 
 // TODO use integrity attribute to verify content if delivered via CDN and use crossorigin="anonymous"
 // TODO set loading="lazy" on img HTML elements.
@@ -44,10 +47,10 @@ import static net.ritzow.news.ResponseUtil.*;
 // TODO use Link header to prefetch font, add parameter to doGetHtmlStreamed
 
 public final class NewsSite {
-	private final Server server;
-	private final ContentManager cm;
-	private final Translator<String> translator;
-	private final Set<String> peers;
+	public final Server server;
+	public final ContentManager cm;
+	public final Translator<String> translator;
+	public final Set<String> peers;
 	
 	public static NewsSite start(boolean requireSni, Path keyStore, String keyStorePassword, Set<String> peers, InetAddress... bind) throws Exception {
 		var server = new NewsSite(requireSni, keyStore, keyStorePassword, peers, bind);
@@ -65,37 +68,40 @@ public final class NewsSite {
 		ContentUtil.genArticles(cm);
 		translator = Translator.ofProperties(properties("/lang/welcome.properties"));
 		this.peers = peers;
-		server = JettySetup.newStandardServer(
-			requireSni, keyStore, keyStorePassword, route()::accept, this::exceptionPageHandler, bind
-		);
-	}
-	
-	private RequestConsumer<Exception> route() {
-		return matchStaticPaths(
+		var route = matchStaticPaths(
 			rootNoMatchOrNext(
-				this::mainPageGenerator,
-				this::doGeneric404,
-				entry("article", this::articlePageProcessor),
+				NewsSite::mainPageGenerator,
+				NewsSite::doGeneric404,
+				entry("article", NewsSite::articlePageProcessor),
 //				entry("shutdown", this::shutdownPage),
-				entry("opensearch", new StaticContentHandler(open("/xml/opensearch.xml"),
+				entry("opensearch", staticContent(jarResourceOpener("/xml/opensearch.xml"),
 					"application/opensearchdescription+xml")),
-				entry("style.css", new StaticContentHandler(open("/css/global.css"), "text/css")),
-				entry("icon.svg", new StaticContentHandler(open("/image/icon.svg"), "image/svg+xml")),
-				entry("opensans.ttf", new StaticContentHandler(open("/font/OpenSans-Regular.ttf"), "font/ttf")),
-				entry("session", this::sessionPage)
+				entry("style.css", staticContent(jarResourceOpener("/css/global.css"), "text/css")),
+				entry("icon.svg", staticContent(jarResourceOpener("/image/icon.svg"), "image/svg+xml")),
+				entry("opensans.ttf", staticContent(jarResourceOpener("/font/OpenSans-Regular.ttf"), "font/ttf")),
+				entry("session", NewsSite::sessionPage)
 			)
+		);
+		
+		server = newStandardServer(
+			requireSni,
+			keyStore, 
+			keyStorePassword,
+			request -> route.accept(request, this), 
+			request -> exceptionPageHandler(request, this), 
+			bind
 		);
 	}
 	
 	//TODO this only works if privacy mode is off, because it blocks cross-site cookies.
 	//TODO maybe use redirects instead?
-	private void sessionPage(Request request, Iterator<String> path) throws IOException {
+	private static void sessionPage(Request request, NewsSite site, Iterator<String> path) throws IOException {
 		switch(HttpMethod.fromString(request.getMethod())) {
 			case GET, HEAD -> {
 				String origin = request.getHttpFields().get(HttpHeader.ORIGIN);
 				if(origin != null) {
 					URI originUrl = URI.create(origin);
-					if(HttpScheme.HTTPS.is(originUrl.getScheme()) && peers.contains(originUrl.getHost())) {
+					if(HttpScheme.HTTPS.is(originUrl.getScheme()) && site.peers.contains(originUrl.getHost())) {
 						request.getResponse().getHttpFields()
 							.add("Access-Control-Allow-Methods", "GET")
 							.add("Access-Control-Allow-Origin", origin)
@@ -142,9 +148,9 @@ public final class NewsSite {
 	);
 
 	@RequiresDynamicHtml
-	private DomContent page(Request request, String title, Locale locale, DomContent fullContent) {
+	private static DomContent page(Request request, NewsSite site, String title, Locale locale, DomContent fullContent) {
 		return html().withLang(locale.toLanguageTag()).with(
-			head(request, title, peers.stream().filter(host -> !host.equals(request.getHttpURI().getHost())).collect(Collectors.toSet())),
+			head(request, title, site.peers.stream().filter(host -> !host.equals(request.getHttpURI().getHost())).collect(Collectors.toSet())),
 			dynamic(PAGE_BODY_HTML, Map.of(
 				"full-content", fullContent,
 				"time", rawHtml(serverTime(locale)),
@@ -164,8 +170,8 @@ public final class NewsSite {
 		return text(format.format(kbUsed) + " KB");
 	}
 	
-	public Locale pageLocale(Request request) {
-		return HttpUser.bestLocale(request, cm.getSupportedLocales());
+	public static Locale pageLocale(Request request, NewsSite site) {
+		return HttpUser.bestLocale(request, site.cm.getSupportedLocales());
 	}
 	
 	/*private void shutdownPage(Request request, Iterator<String> path) {
@@ -223,8 +229,8 @@ public final class NewsSite {
 	
 	private static final DomContent LOGO_HTML = logo("/icon.svg");
 	
-	private DomContent header(Request request) {
-		List<Locale> locales = cm.getSupportedLocales();
+	private static DomContent header(Request request, NewsSite site) {
+		List<Locale> locales = site.cm.getSupportedLocales();
 		Locale bestCurrent = HttpUser.bestLocale(request, locales);
 		return each(
 			LOGO_HTML,
@@ -241,8 +247,8 @@ public final class NewsSite {
 	private static DomContent accountHeader(Request request) {
 		return HttpUser.getExistingSession(request)
 			.flatMap(SessionData::user)
-			.map(NewsSite::loggedInForm)
-			.orElseGet(NewsSite::loginForm);
+			.map(Login::loggedInForm)
+			.orElseGet(Login::loginForm);
 	}
 	
 	private static ButtonTag langButton(Locale locale, Locale pageLocale) {
@@ -260,54 +266,15 @@ public final class NewsSite {
 		return button;
 	}
 	
-	private static final DomContent LOGIN_FORM_CONTENT = freeze(
-		input().withClasses("text-field")
-			.withName("username")
-			.withType("text")
-			.attr("autocomplete", "username")
-			.withPlaceholder("Username"),
-		input().withClasses("text-field")
-			.withName("password")
-			.withType("password")
-			.attr("autocomplete", "current-password")
-			.withPlaceholder("Password"),
-		label(
-			input()
-				.withName("login-remember")
-				.withType("checkbox"), 
-			rawHtml("Remember me")
-		),
-		button("Login")
-			.withName("login-action")
-			.withValue("login"),
-		button("Sign up")
-			.withName("login-action")
-			.withValue("signup")
-	);
-	
-	/* Cool checkboxes https://stackoverflow.com/questions/4148499/how-to-style-a-checkbox-using-css */
-	/* Custom checkbox https://stackoverflow.com/questions/44299150/set-text-inside-a-check-box/44299305 */
-	/* TODO the username should be prefilled in "value" on the next page if the user clicks "Sign up" */
-	private static DomContent loginForm() {
-		return postForm().withClass("login-form").with(LOGIN_FORM_CONTENT);
-	}
-
-	private static DomContent loggedInForm(String username) {
-		return postForm().withClass("logged-in-form").with(
-			text(username),
-			button("Log out").withName("logout").withValue("logout")
-		);
-	}
-	
 	/** Respond to {@code request} with a 303 redirect to the page, and set the language. **/
-	private void processLangForm(Request request, String langTag) {
-		storeLocale(request, langTag);
+	private static void processLangForm(Request request, NewsSite site, String langTag) {
+		storeLocale(request, site, langTag);
 		doRefreshPage(request);
 	}
 	
-	private void storeLocale(Request request, String languageTag) {
+	private static void storeLocale(Request request, NewsSite site, String languageTag) {
 		Locale selected = Locale.forLanguageTag(languageTag);
-		Optional<Locale> existing = cm.getSupportedLocales().stream().filter(selected::equals).findAny();
+		Optional<Locale> existing = site.cm.getSupportedLocales().stream().filter(selected::equals).findAny();
 		HttpUser.session(request).locale(existing.orElseThrow(() -> new RuntimeException("Invalid selected locale \"" + languageTag + "\"")));
 	}
 	
@@ -326,24 +293,24 @@ public final class NewsSite {
 		FormField.required("logout", Forms::stringReader)
 	);
 	
-	private void mainPageGenerator(Request request) {
-		mainPageGenerator(request, Collections.emptyIterator());
+	private static void mainPageGenerator(Request request, NewsSite site) {
+		mainPageGenerator(request, site, Collections.emptyIterator());
 	}
 	
-	private void mainPageGenerator(Request request, Iterator<String> path) {
+	private static void mainPageGenerator(Request request, NewsSite site, Iterator<String> path) {
 		switch(HttpMethod.fromString(request.getMethod())) {
 			case GET, HEAD -> {
 				if(path.hasNext()) {
-					doDecoratedPage(HttpStatus.NOT_FOUND_404, request, pageLocale(request),
+					doDecoratedPage(HttpStatus.NOT_FOUND_404, request, site, pageLocale(request, site),
 						"No such path",
 						p(rawHtml("No such path " + prettyUrl(request)))
 					);
 					return;
 				}
 				
-				Locale bestLocale = pageLocale(request);
-				doDecoratedPage(HttpStatus.OK_200, request, bestLocale, "RedNet!",
-					generateArticlesList(bestLocale)
+				Locale bestLocale = pageLocale(request, site);
+				doDecoratedPage(HttpStatus.OK_200, request, site, bestLocale, "RedNet!",
+					generateArticlesList(bestLocale, site)
 				);
 			}
 			
@@ -351,99 +318,47 @@ public final class NewsSite {
 			/* Don't use Referer header for this purpose https://stackoverflow.com/a/6023980/2442171 */
 			/* https://security.stackexchange.com/a/133945 */
 			case POST -> doFormResponse(request,
-				entry(LOGIN_FORM, values -> doLoginForm(request, values)),
-				entry(LANG_SELECT_FORM, values -> doLangSelectForm(request, values)),
-				entry(LOGGED_IN_FORM, values -> doLoggedInForm(request ,values))
+				entry(LOGIN_FORM, values -> Login.doLoginForm(request, site, values)),
+				entry(LANG_SELECT_FORM, values -> doLangSelectForm(request, site, values)),
+				entry(LOGGED_IN_FORM, values -> Login.doLoggedInForm(request ,values))
 			);
 		}
 	}
 	
-	private URI doLangSelectForm(Request request, Function<String, Optional<Object>> values) {
-		values.apply("lang-select").ifPresent(lang -> processLangForm(request, (String)lang));
+	private static URI doLangSelectForm(Request request, NewsSite site, Function<String, Optional<Object>> values) {
+		values.apply("lang-select").ifPresent(lang -> processLangForm(request, site, (String)lang));
 		return request.getHttpURI().toURI();
 	}
 	
-	private URI doLoginForm(Request request, Function<String, Optional<Object>> values) {
-		var login = values.apply("login-action");
-		
-		if(login.isPresent()) {
-			String username = (String)values.apply("username").orElseThrow();
-			byte[] password = (byte[])values.apply("password").orElseThrow();
-			
-			try {
-				switch(login.map(o -> (String)o).orElseThrow()) {
-					case "login" -> accountLogin(request, username, password);
-					case "signup" -> accountSignup(request, username, password);
-				}
-				
-				/* TODO check for errors or if username already exists */
-				//if(values.apply("login-remember").map(o -> (String)o).orElse("off").equals("on")) {
-					/* TODO remember me */
-				//}
-				
-			} finally {
-				Arrays.fill(password, (byte)0);
-			}
-		}
-		return request.getHttpURI().toURI();
-	}
-	
-	private static URI doLoggedInForm(Request request, Function<String, Optional<Object>> values) {
-		if(values.apply("logout").filter(val -> val.equals("logout")).isPresent()) {
-			HttpUser.getExistingSession(request).ifPresent(session -> session.user(null));
-		}
-		return request.getHttpURI().toURI();
-	}
-	
-	private void accountLogin(Request request, String username, byte[] password) {
-		/* TODO implement rate limiting for retries based on IP address, etc. */
-		if(cm.authenticateLogin(username, password)) {
-			HttpUser.session(request).user(username);
-		}
-		
-		doRefreshPage(request);
-	}
-	
-	private void accountSignup(Request request, String username, byte[] password) {
-		cm.newAccount(
-			username,
-			password
-		);
-		
-		var session = HttpUser.session(request);
-		session.user(username);
-		doRefreshPage(request);
-	}
-	
-	private DomContent generateArticlesList(Locale bestLocale) {
+	private static DomContent generateArticlesList(Locale bestLocale, NewsSite site) {
 		return each(
 			h1(translated("greeting")).withClass("title"),
 			dynamic(state -> eachStreamed(
-				cm.getArticlesForLocale(bestLocale).stream().map(
+				site.cm.getArticlesForLocale(bestLocale).stream().map(
 					article3 -> articleBox(article3.title(), "/article/" + article3.urlname())
 				)
 			))
 		);
 	}
 	
-	private void articlePageProcessor(Request request, Iterator<String> path) {
+	private static void articlePageProcessor(Request request, NewsSite site, Iterator<String> path) {
 		switch(HttpMethod.fromString(request.getMethod())) {
 			case GET, HEAD -> {
 				Optional<String> name = Optional.ofNullable(path.hasNext() ? path.next() : null);
-				Locale mainLocale = pageLocale(request);
+				Locale mainLocale = pageLocale(request, site);
 				
 				//TODO make sure there isn't an extra component in the path
 				
 				if(name.isEmpty()) {
-					doWrongArticlePath(request, mainLocale);
+					doWrongArticlePath(request, site, mainLocale);
 					return;
 				}
 				
 				String urlname = name.orElseThrow();
-				List<Locale> supported = cm.getArticleLocales(urlname);
+				List<Locale> supported = site.cm.getArticleLocales(urlname);
 				
 				if(path.hasNext()) {
-					doDecoratedPage(HttpStatus.NOT_FOUND_404, request, mainLocale, "Not Found",
+					doDecoratedPage(HttpStatus.NOT_FOUND_404, request, site, mainLocale, "Not Found",
 						p(
 							rawHtml("There is no such page " + prettyUrl(request))
 						)
@@ -451,27 +366,27 @@ public final class NewsSite {
 				}
 				
 				if(supported.isEmpty()) {
-					doNoSuchArticle(request, mainLocale, urlname);
+					doNoSuchArticle(request, site, mainLocale, urlname);
 					return;
 				}
 				
 				Locale articleLocale = HttpUser.bestLocale(request, supported);
-				Optional<Article<MarkdownContent>> article = cm.getLatestArticle(urlname, articleLocale, MarkdownContent::new);
+				Optional<Article<MarkdownContent>> article = site.cm.getLatestArticle(urlname, articleLocale, MarkdownContent::new);
 				
 				if(article.isEmpty()) {
-					doNoSuchArticle(request, mainLocale, urlname);
+					doNoSuchArticle(request, site, mainLocale, urlname);
 					return;
 				}
 				
-				doDecoratedPage(HttpStatus.OK_200, request, mainLocale, article.orElseThrow().title(),
+				doDecoratedPage(HttpStatus.OK_200, request, site, mainLocale, article.orElseThrow().title(),
 					generateArticlePage(articleLocale, mainLocale, article.orElseThrow())
 				);
 			}
 			
 			case POST -> doFormResponse(request, 
-				entry(LOGIN_FORM, values -> doLoginForm(request, values)),
-				entry(LANG_SELECT_FORM, values -> doLangSelectForm(request, values)),
-				entry(LOGGED_IN_FORM, values -> doLoggedInForm(request, values))
+				entry(LOGIN_FORM, values -> Login.doLoginForm(request, site, values)),
+				entry(LANG_SELECT_FORM, values -> doLangSelectForm(request, site, values)),
+				entry(LOGGED_IN_FORM, values -> Login.doLoggedInForm(request, values))
 			);
 		}
 	}
@@ -487,12 +402,12 @@ public final class NewsSite {
 		);	
 	}
 	
-	private void doDecoratedPage(int status, Request request, Locale mainLocale, String title, DomContent body) {
+	private static void doDecoratedPage(int status, Request request, NewsSite site, Locale mainLocale, String title, DomContent body) {
 		doGetHtmlStreamed(request, status, List.of(mainLocale),
-			context(request, translator, Map.of(),
-				page(request, title, mainLocale,
+			context(request, site.translator, Map.of(),
+				page(request, site, title, mainLocale,
 					content(
-						header(request),
+						header(request, site),
 						body
 					)
 				)
@@ -506,14 +421,14 @@ public final class NewsSite {
 	
 	/* TODO translate error pages */
 	
-	private void doNoSuchArticle(Request request, Locale mainLocale, String urlname) {
-		doDecoratedPage(HttpStatus.NOT_FOUND_404, request, mainLocale, "No such article",
+	private static void doNoSuchArticle(Request request, NewsSite site, Locale mainLocale, String urlname) {
+		doDecoratedPage(HttpStatus.NOT_FOUND_404, request, site, mainLocale, "No such article",
 			p("No such article \"" + urlname + "\"")
 		);
 	}
 	
-	private void doWrongArticlePath(Request request, Locale mainLocale) {
-		doDecoratedPage(HttpStatus.NOT_FOUND_404, request, mainLocale, "Not an article",
+	private static void doWrongArticlePath(Request request, NewsSite site, Locale mainLocale) {
+		doDecoratedPage(HttpStatus.NOT_FOUND_404, request, site, mainLocale, "Not an article",
 			each(
 				p("Please specify an article URL component: ").with(
 					span(request.getHttpURI().toURI().normalize() + "<article-path>")
@@ -535,22 +450,22 @@ public final class NewsSite {
 		)
 	);
 	
-	private static DomContent staticContent(DomContent... content) {
+	private static DomContent headerlessContent(DomContent... content) {
 		return dynamic(STATIC_CENTERED_CONTENT, Map.of("content", each(content)));
 	}
 	
-	private void doGeneric404(Request request, @SuppressWarnings("Unused") Iterator<String> path) {
-		doDecoratedPage(HttpStatus.NOT_FOUND_404, request, pageLocale(request), "No Such Path",
+	private static void doGeneric404(Request request, NewsSite site, @SuppressWarnings("Unused") Iterator<String> path) {
+		doDecoratedPage(HttpStatus.NOT_FOUND_404, request, site, pageLocale(request, site), "No Such Path",
 			p("No such path " + prettyUrl(request))
 		);
 	}
 	
-	private void exceptionPageHandler(Request request) {
+	private static void exceptionPageHandler(Request request, NewsSite site) {
 		Optional.ofNullable(request.getSession(false)).ifPresent(HttpSession::invalidate);
 		doGetHtmlStreamed(request, HttpStatus.INTERNAL_SERVER_ERROR_500, List.of(),
-			context(request, translator, Map.of(),
-				page(request, "Error", Locale.forLanguageTag("en-US"),
-					staticContent(
+			context(request, site.translator, Map.of(),
+				page(request, site, "Error", Locale.forLanguageTag("en-US"),
+					headerlessContent(
 						p("Sorry, there was an unexpected error!"),
 						a("Go home").withHref("/")
 					)

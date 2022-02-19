@@ -150,23 +150,23 @@ public class PageTemplate {
 				.withContent("width=device-width,initial-scale=1"),
 			meta().withCharset("utf-8"),
 			meta().withName("referrer").withContent("no-referrer")
-		),
+		)
 		//TODO this can be used to login to other trusted domains, can send multiple.
-		named("session-init")
+		//named("session-init")
 	);
 	
 	@RequiresDynamicHtml
 	public static DomContent head(Request request, String title, Set<String> peers) {
 		return dynamic(HEAD_HTML, Map.of(
-			"title", title(title),
+			"title", title(title)
 			/* TODO disable these if already logged in at peer websites */
-			"session-init", request.getSession(false) != null ? eachStreamed(
+			/*"session-init", request.getSession(false) != null ? eachStreamed(
 				peers.stream().map(peer -> link()
 					.withRel("preload")
 					.withHref("https://" + peer + "/session?id=" + request.getSession(false).getId())
 					.attr("as", "fetch")
 					.attr("crossorigin", "use-credentials"))
-			) : each()
+			) : each()*/
 		));
 	}
 	

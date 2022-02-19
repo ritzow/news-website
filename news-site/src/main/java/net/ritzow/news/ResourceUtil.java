@@ -9,13 +9,8 @@ import java.util.Properties;
 import java.util.function.Supplier;
 
 public class ResourceUtil {
-	static String resourceAsString(String resource) throws IOException {
-		try(var in = NewsSite.class.getResourceAsStream(resource)) {
-			return new String(in.readAllBytes(), StandardCharsets.UTF_8);
-		}
-	}
 	
-	static Supplier<InputStream> open(String resource) {
+	static Supplier<InputStream> jarResourceOpener(String resource) {
 		return () -> NewsSite.class.getResourceAsStream(resource);
 	}
 	

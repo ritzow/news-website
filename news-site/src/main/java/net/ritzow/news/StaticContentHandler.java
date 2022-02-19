@@ -18,11 +18,15 @@ import org.eclipse.jetty.server.Response;
 
 import static net.ritzow.news.ResponseUtil.skipInput;
 
-class StaticContentHandler implements ContextRequestConsumer<IOException> {
+class StaticContentHandler<T> implements ContextRequestConsumer<T, IOException> {
 	private final String contentType;
 	private final Supplier<InputStream> resource;
 	private SoftReference<byte[]> content;
 	private String etag;
+	
+	public static <T> StaticContentHandler<T> staticContent(Supplier<InputStream> resource, String contentType) {
+		return new StaticContentHandler<>(resource, contentType);
+	}
 	
 	public StaticContentHandler(Supplier<InputStream> resource, String contentType) {
 		this.contentType = contentType;
@@ -31,7 +35,7 @@ class StaticContentHandler implements ContextRequestConsumer<IOException> {
 	}
 	
 	@Override
-	public void accept(Request request, Iterator<String> path) throws IOException {
+	public void accept(Request request, T unused, Iterator<String> path) throws IOException {
 		
 		skipInput(request);
 		

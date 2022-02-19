@@ -69,7 +69,7 @@ public class ResponseUtil {
 		return PATH_COMPONENT.splitAsStream(request.getHttpURI().getDecodedPath()).filter(Predicate.not(String::isEmpty)).iterator();
 	}
 	
-	static void doRefreshPage(Request request) {
+	public static void doRefreshPage(Request request) {
 		doSeeOther(request, URI.create(request.getHttpURI().getDecodedPath()));
 	}
 	
@@ -80,31 +80,31 @@ public class ResponseUtil {
 	}
 	
 	@FunctionalInterface
-	public interface RequestConsumer<T extends Exception> {
-		void accept(Request request) throws T;
+	public interface RequestConsumer<S, T extends Exception> {
+		void accept(Request request, S data) throws T;
 	}
 	
 	@FunctionalInterface
-	public interface ContextRequestConsumer<T extends Exception> {
-		void accept(Request request, Iterator<String> path) throws T;
+	public interface ContextRequestConsumer<S, T extends Exception> {
+		void accept(Request request, S data, Iterator<String> path) throws T;
 	}
 	
-	public static <T extends Exception> RequestConsumer<T> matchStaticPaths(ContextRequestConsumer<T> paths) {
-		return request -> {
+	public static <S, T extends Exception> RequestConsumer<S, T> matchStaticPaths(ContextRequestConsumer<S, T> paths) {
+		return (request, data) -> {
 			var path = ResponseUtil.path(request);
-			paths.accept(request, path);
+			paths.accept(request, data, path);
 		};
 	}
 	
 	@SafeVarargs
-	public static <T extends Exception> ContextRequestConsumer<T> rootNoMatchOrNext(RequestConsumer<? extends T> root,
-			ContextRequestConsumer<? extends T> noMatch, Entry<String, ContextRequestConsumer<? extends T>>... paths) {
+	public static <S, T extends Exception> ContextRequestConsumer<S, T> rootNoMatchOrNext(RequestConsumer<S, ? extends T> root,
+			ContextRequestConsumer<S, ? extends T> noMatch, Entry<String, ContextRequestConsumer<S, ? extends T>>... paths) {
 		var map = Map.ofEntries(paths);
-		return (request, it) -> {
+		return (request, data, it) -> {
 			if(it.hasNext()) {
-				map.getOrDefault(it.next(), noMatch).accept(request, it);
+				map.getOrDefault(it.next(), noMatch).accept(request, data, it);
 			} else {
-				root.accept(request);
+				root.accept(request, data);
 			}
 		};
 	}

@@ -38,10 +38,14 @@ public class JettySetup {
 		void accept(Request request) throws T;
 	}
 	
-	public static Server newStandardServer(boolean requireSni, Path keyStore, 
+	public static Server newStandardServer(
+			boolean requireSni, 
+			Path keyStore, 
 			String keyStorePassword, 
-			RequestConsumer<? extends Exception> mainHandler, RequestConsumer<? extends Exception> errorHandler, 
+			RequestConsumer<? extends Exception> mainHandler, 
+			RequestConsumer<? extends Exception> errorHandler, 
 			InetAddress... bind)
+		
 			throws CertificateException, 
 			IOException, 
 			KeyStoreException, 
