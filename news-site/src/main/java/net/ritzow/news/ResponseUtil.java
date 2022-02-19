@@ -6,6 +6,7 @@ import java.io.IOException;
 import java.io.OutputStreamWriter;
 import java.io.UncheckedIOException;
 import java.io.Writer;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.Iterator;
 import java.util.List;
@@ -15,6 +16,7 @@ import java.util.Map.Entry;
 import java.util.function.Predicate;
 import java.util.regex.Pattern;
 import org.eclipse.jetty.http.HttpHeader;
+import org.eclipse.jetty.http.HttpStatus;
 import org.eclipse.jetty.server.Request;
 import org.eclipse.jetty.server.Response;
 
@@ -65,6 +67,16 @@ public class ResponseUtil {
 	
 	public static Iterator<String> path(Request request) {
 		return PATH_COMPONENT.splitAsStream(request.getHttpURI().getDecodedPath()).filter(Predicate.not(String::isEmpty)).iterator();
+	}
+	
+	static void doRefreshPage(Request request) {
+		doSeeOther(request, URI.create(request.getHttpURI().getDecodedPath()));
+	}
+	
+	private static void doSeeOther(Request request, URI location) {
+		request.getResponse().setHeader(HttpHeader.LOCATION, location.toString());
+		request.getResponse().setStatus(HttpStatus.SEE_OTHER_303);
+		request.setHandled(true);
 	}
 	
 	@FunctionalInterface

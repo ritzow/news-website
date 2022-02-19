@@ -15,13 +15,10 @@ import java.util.Map.Entry;
 import java.util.function.Function;
 import javax.crypto.SecretKeyFactory;
 import javax.crypto.spec.PBEKeySpec;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import static java.util.Map.entry;
 
 public final class ContentManager {
-	private static final Logger LOG = LoggerFactory.getLogger(ContentManager.class);
 	
 	private final HikariDataSource db;
 	
@@ -210,10 +207,6 @@ public final class ContentManager {
 				build.append(String.format("%5d %s%n", line, lines.next()));
 				line++;
 			}
-			/*if(e.getCause() != null) {
-				System.err.print("Caused by: ");
-				e.getCause().printStackTrace();
-			}*/
 			throw new RuntimeException(build.toString(), e);
 		} catch(SQLException e) {
 			var it = e.iterator();
@@ -241,13 +234,9 @@ public final class ContentManager {
 		}
 	}
 	
-	public Connection getConnection() throws SQLException {
-		return db.getConnection();
-	}
-	
 	public record Article3(String urlname, String title) {}
 	
-	public List<Article3> getArticlesForLocale(Locale locale) throws SQLException, IOException {
+	public List<Article3> getArticlesForLocale(Locale locale) {
 		try(var db = this.db.getConnection()) {
 			try(var st = db.prepareCall("call get_all_articles_for_locale(?)")) {
 				st.setString(1, locale.toLanguageTag());
@@ -260,10 +249,12 @@ public final class ContentManager {
 				}
 				return articles;
 			}
+		} catch(SQLException | IOException e) {
+			throw new RuntimeException(e);
 		}
 	}
 	
-	public List<Locale> getSupportedLocales() throws SQLException {
+	public List<Locale> getSupportedLocales() {
 		try(var db = this.db.getConnection()) {
 			try(var st = db.prepareStatement("SELECT code FROM locales")) {
 				ResultSet result = st.executeQuery();
@@ -273,10 +264,12 @@ public final class ContentManager {
 				}
 				return list;
 			}
+		} catch(SQLException e) {
+			throw new RuntimeException(e);
 		}
 	}
 	
-	public List<Locale> getArticleLocales(String urlname) throws SQLException {
+	public List<Locale> getArticleLocales(String urlname) {
 		try(var db = this.db.getConnection()) {
 			try(var st = db.prepareCall("call get_article_langs(?)")) {
 				st.setString(1, urlname);
@@ -288,10 +281,12 @@ public final class ContentManager {
 					return locales;
 				}
 			}
+		} catch(SQLException e) {
+			throw new RuntimeException(e);
 		}
 	}
 	
-	public void newArticle(String urlName, Locale locale, String title, String markdown) throws SQLException {
+	public void newArticle(String urlName, Locale locale, String title, String markdown) {
 		try(var db = this.db.getConnection()) {
 			try(var st = db.prepareCall("call new_article(?, ?, ?, ?)")) {
 				st.setString(1, urlName);
@@ -300,11 +295,13 @@ public final class ContentManager {
 				st.setBinaryStream(4, new ByteArrayInputStream(markdown.getBytes(StandardCharsets.UTF_8)));
 				st.execute();
 			}
+		} catch(SQLException e) {
+			throw new RuntimeException(e);
 		}
 	}
 	
 	/* Does not clear password parameter utf8 */
-	public void newAccount(String username, byte[] utf8) throws SQLException {
+	public void newAccount(String username, byte[] utf8) {
 		try(var db = this.db.getConnection()) {
 			try(var st = db.prepareCall("call new_account(?, ?, ?, ?)")) {
 				st.setString(1, username);
@@ -316,20 +313,13 @@ public final class ContentManager {
 				st.setBytes(3, passwordHash(utf8, salt));
 				st.registerOutParameter(4, Types.INTEGER);
 				st.execute();
-			} catch(NoSuchAlgorithmException e) {
-				throw new RuntimeException(e);
 			}
-			
-			/*try(var st = db.prepareStatement("SELECT pwHash FROM accounts LIMIT 1")) {
-				try(var res = st.executeQuery()) {
-					res.next();
-					System.out.println(Base64.getEncoder().withoutPadding().encodeToString(res.getBytes("pwHash")));	
-				}
-			}*/
+		} catch(SQLException | NoSuchAlgorithmException e) {
+			throw new RuntimeException(e);
 		}
 	}
 	
-	public boolean authenticateLogin(String username, byte[] password) throws SQLException {
+	public boolean authenticateLogin(String username, byte[] password) {
 		try(var db = this.db.getConnection()) {
 			try(var st = db.prepareStatement("SELECT pwSalt, pwHash FROM accounts WHERE username = ?")) {
 				st.setString(1, username);
@@ -341,6 +331,8 @@ public final class ContentManager {
 					return false;
 				}
 			}
+		} catch(SQLException e) {
+			throw new RuntimeException(e);
 		}
 	}
 	
@@ -367,8 +359,7 @@ public final class ContentManager {
 	public record Article<T>(String title, T content) {}
 	
 	/* Returned reader must be closed */
-	public <T> Optional<Article<T>> getLatestArticle(String urlName, Locale locale, Function<Reader, T> transform)
-			throws SQLException, IOException {
+	public <T> Optional<Article<T>> getLatestArticle(String urlName, Locale locale, Function<Reader, T> transform) {
 		try(var db = this.db.getConnection()) {
 			try(var st = db.prepareCall("call get_latest_article(?, ?)")) {
 				st.setString(1, urlName);
@@ -388,6 +379,8 @@ public final class ContentManager {
 					}
 				}
 			}
+		} catch(SQLException | IOException e) {
+			throw new RuntimeException(e);
 		}
 	}
 	

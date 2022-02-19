@@ -31,7 +31,8 @@ public class ContentUtil {
 	static void genArticles(ContentManager cm) throws SQLException {
 		RandomGenerator random = RandomGeneratorFactory.getDefault().create(0);
 		
-		for(int i = 0; i < 25; i++) {
+		int count = random.nextInt(15, 35);
+		for(int i = 0; i < count; i++) {
 			int length = random.nextInt(200, 2000);
 			String title = ContentUtil.generateGibberish(random, false, 3, 5);
 			for(Locale locale : cm.getSupportedLocales()) {
