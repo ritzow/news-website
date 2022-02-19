@@ -4,9 +4,7 @@ Embedded Jetty server using HTML generation and a (currently in-memory) database
 
 ## Project Structure
 
-[`/news-site`](news-site) contains most of the code.
-
-[`/jetstart`](jetstart) contains some base code, this was originally intended to be the "website agnostic" part of the code, but I put most code in `/news-site`.
+[`/news-site`](news-site) contains all source code and assets.
 
 ## Software Used
 
