@@ -21,7 +21,7 @@ import org.eclipse.jetty.server.Request;
 import org.eclipse.jetty.server.Response;
 
 public class ResponseUtil {
-	static void doGetHtmlStreamed(Request request, int status, List<Locale> langs, DomContent html) {
+	public static void doGetHtmlStreamed(Request request, int status, List<Locale> langs, DomContent html) {
 		try {
 			/* Must consume all request body content! (Jetty was giving a DEBUG exception) */
 			skipInput(request);

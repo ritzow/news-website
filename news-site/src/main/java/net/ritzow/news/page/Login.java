@@ -5,6 +5,9 @@ import java.net.URI;
 import java.util.Arrays;
 import java.util.Optional;
 import java.util.function.Function;
+import net.ritzow.news.Forms;
+import net.ritzow.news.Forms.FormField;
+import net.ritzow.news.Forms.FormWidget;
 import net.ritzow.news.HttpUser;
 import net.ritzow.news.NewsSite;
 import org.eclipse.jetty.server.Request;
@@ -15,6 +18,10 @@ import static net.ritzow.news.PageTemplate.postForm;
 import static net.ritzow.news.ResponseUtil.doRefreshPage;
 
 public class Login {
+	
+	public static final FormWidget LOGGED_IN_FORM = FormWidget.of(
+		FormField.required("logout", Forms::stringReader)
+	);
 	
 	private static final DomContent LOGIN_FORM_CONTENT = freeze(
 		input().withClasses("text-field")

@@ -9,7 +9,7 @@ import org.commonmark.node.Node;
 import org.commonmark.parser.Parser;
 import org.commonmark.renderer.html.HtmlRenderer;
 
-class MarkdownContent extends DomContent {
+public class MarkdownContent extends DomContent {
 	private final Node markdown;
 	
 	private static final HtmlRenderer RENDERER = HtmlRenderer.builder().escapeHtml(true).build();
