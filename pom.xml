@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0">
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>net.ritzow</groupId>
+  <artifactId>news-site</artifactId>
+  <version>1.0</version>
+  <packaging>pom</packaging>
+  <modules>
+    <module>news-site</module>
+    <module>runner</module>
+    <module>news-site-resource-plugin</module>
+  </modules>
+</project>
