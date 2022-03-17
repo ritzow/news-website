@@ -33,6 +33,8 @@ import org.slf4j.LoggerFactory;
 
 public class JettySetup {
 	
+	private static final Logger LOG = LoggerFactory.getLogger(JettySetup.class);
+	
 	@FunctionalInterface
 	public interface RequestConsumer<T extends Exception> {
 		void accept(Request request) throws T;
@@ -77,17 +79,7 @@ public class JettySetup {
 		};
 		
 		server.setErrorHandler(onError);
-		server.setHandler(setupHandlers(server, new AbstractHandler() {
-			@Override
-			public void handle(String target, Request baseRequest, HttpServletRequest request, HttpServletResponse response)
-					throws IOException {
-				try {
-					mainHandler.accept(baseRequest);
-				} catch(Exception e) {
-					throw new IOException(e);
-				}
-			}
-		}));
+		server.setHandler(setupHandlers(server, new SuperHandler(mainHandler)));
 		server.setStopAtShutdown(true);
 		server.addBean(new MBeanContainer(ManagementFactory.getPlatformMBeanServer()));
 		return server;
@@ -100,16 +92,21 @@ public class JettySetup {
 		secureHandler.setHandler(gzipHandler);
 		RequestLogHandler logHandler = new RequestLogHandler();
 		logHandler.setHandler(secureHandler);
-		Logger log = LoggerFactory.getLogger(JettySetup.class);
-		logHandler.setRequestLog((request, response) -> log.atInfo().log(
+		logHandler.setRequestLog(JettySetup::log);
+		StatisticsHandler statsHandler = new StatisticsHandler();
+		statsHandler.setHandler(logHandler);
+		return statsHandler;
+	}
+	
+	private static void log(Request request, Response response) {
+		LOG.atInfo().log(
 			request.getRemoteInetSocketAddress().getAddress().getHostAddress()
 				+ " " + request.getMethod()
 				+ " " + request.getHttpURI().asString()
 				+ " \"" + HttpStatus.getCode(response.getStatus()).getMessage()
-				+ "\" (" + response.getStatus() + ")"));
-		StatisticsHandler statsHandler = new StatisticsHandler();
-		statsHandler.setHandler(logHandler);
-		return statsHandler;
+				+ "\" (" + response.getStatus() + ")"
+				+ " (" + (System.currentTimeMillis() - request.getTimeStamp()) + " ms"
+		);
 	}
 	
 	private static Handler setupSessionInfrastructure(Server server, Handler inner) {
@@ -180,5 +177,24 @@ public class JettySetup {
 		httpConfig.addCustomizer(secureCustomizer);
 		
 		return httpConfig;
+	}
+
+	private static class SuperHandler extends AbstractHandler {
+		private final RequestConsumer<? extends Exception> mainHandler;
+
+		public SuperHandler(RequestConsumer<? extends Exception> mainHandler) {this.mainHandler = mainHandler;}
+
+		@Override
+		public void handle(String target, Request baseRequest, HttpServletRequest request, HttpServletResponse response)
+				throws IOException {
+			try {
+				mainHandler.accept(baseRequest);
+			} catch(Exception e) {
+				if(e instanceof RuntimeException r) {
+					throw r;
+				}
+				throw new IOException(e);
+			}
+		}
 	}
 }
