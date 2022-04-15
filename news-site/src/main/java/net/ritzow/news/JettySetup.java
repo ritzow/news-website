@@ -7,6 +7,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.lang.management.ManagementFactory;
 import java.net.InetAddress;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.KeyStore;
 import java.security.KeyStoreException;
@@ -36,16 +37,16 @@ public class JettySetup {
 	private static final Logger LOG = LoggerFactory.getLogger(JettySetup.class);
 	
 	@FunctionalInterface
-	public interface RequestConsumer<T extends Exception> {
-		void accept(Request request) throws T;
+	public interface RequestConsumer {
+		void accept(Request request) throws IOException;
 	}
 	
 	public static Server newStandardServer(
 			boolean requireSni, 
 			Path keyStore, 
 			String keyStorePassword, 
-			RequestConsumer<? extends Exception> mainHandler, 
-			RequestConsumer<? extends Exception> errorHandler, 
+			RequestConsumer mainHandler, 
+			RequestConsumer errorHandler, 
 			InetAddress... bind)
 		
 			throws CertificateException, 
@@ -70,11 +71,7 @@ public class JettySetup {
 				if(cause != null) {
 					cause.printStackTrace();
 				}
-				try {
-					errorHandler.accept(baseRequest);
-				} catch(Exception e) {
-					throw new IOException(e);
-				}
+				errorHandler.accept(baseRequest);
 			}
 		};
 		
@@ -105,7 +102,7 @@ public class JettySetup {
 				+ " " + request.getHttpURI().asString()
 				+ " \"" + HttpStatus.getCode(response.getStatus()).getMessage()
 				+ "\" (" + response.getStatus() + ")"
-				+ " (" + (System.currentTimeMillis() - request.getTimeStamp()) + " ms"
+				+ " (" + (System.currentTimeMillis() - request.getTimeStamp()) + " ms)"
 		);
 	}
 	
@@ -119,8 +116,8 @@ public class JettySetup {
 		handler.setSessionCookie("session");
 		handler.setHttpOnly(true);
 		handler.setSecureRequestOnly(true);
-		//handler.setSameSite(SameSite.STRICT);
-		handler.setSameSite(SameSite.NONE); /* TODO test, is this correct or a vulnerability? will allow other sites to access sensitive info */
+		handler.setSameSite(SameSite.STRICT);
+		//handler.setSameSite(SameSite.NONE); /* TODO test, is this correct or a vulnerability? will allow other sites to access sensitive info */
 		handler.setSessionTrackingModes(EnumSet.of(SessionTrackingMode.COOKIE));
 		handler.setHandler(inner);
 		return handler;
@@ -133,7 +130,7 @@ public class JettySetup {
 		return http11Insecure;
 	}
 	
-	private static ServerConnector httpSslConnector(Server server, InetAddress bind, HttpConfiguration config, Path keyStore, String keyStorePassword) 
+	private static ServerConnector httpSslConnector(Server server, InetAddress bind, HttpConfiguration config, Path keyStorePkcs12, String keyStorePassword) 
 			throws CertificateException, KeyStoreException, IOException, NoSuchAlgorithmException {
 		var http1 = new HttpConnectionFactory(new HttpConfiguration(config));
 		var http2 = new HTTP2ServerConnectionFactory(new HttpConfiguration(config));
@@ -141,8 +138,7 @@ public class JettySetup {
 		alpn.setDefaultProtocol(http2.getProtocol());
 		SslContextFactory.Server sslFactory = new SslContextFactory.Server();
 		/* Create PKCS12 file: https://gist.github.com/novemberborn/4eb91b0d166c27c2fcd4 */
-		KeyStore ks = KeyStore.getInstance(keyStore.toFile(), keyStorePassword.toCharArray());
-		sslFactory.setKeyStore(ks);
+		sslFactory.setKeyStore(Certs.loadPkcs12(keyStorePkcs12, keyStorePassword.toCharArray()));
 		sslFactory.setKeyStorePassword(keyStorePassword);
 		var ssl = new SslConnectionFactory(sslFactory, alpn.getProtocol());
 		/* Handlers are found using string lookups in the ConnectionFactory list of the ServerConnector */
@@ -180,9 +176,9 @@ public class JettySetup {
 	}
 
 	private static class SuperHandler extends AbstractHandler {
-		private final RequestConsumer<? extends Exception> mainHandler;
+		private final RequestConsumer mainHandler;
 
-		public SuperHandler(RequestConsumer<? extends Exception> mainHandler) {this.mainHandler = mainHandler;}
+		public SuperHandler(RequestConsumer mainHandler) {this.mainHandler = mainHandler;}
 
 		@Override
 		public void handle(String target, Request baseRequest, HttpServletRequest request, HttpServletResponse response)

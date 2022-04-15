@@ -50,10 +50,10 @@ public class Forms {
 	}
 	
 	private static class Shared {
-		final Function<Function<String, Optional<Object>>, URI> handler;
+		final Function<Function<String, Optional<Object>>, String> handler;
 		int count;
 		
-		private Shared(Function<Function<String, Optional<Object>>, URI> handler, int count) {
+		private Shared(Function<Function<String, Optional<Object>>, String> handler, int count) {
 			this.handler = handler;
 			this.count = count;
 		}
@@ -76,7 +76,7 @@ public class Forms {
 	
 	/** Only allow a single HTML form to get called. handler returns the redirect URI **/
 	@SafeVarargs
-	public static void doFormResponse(Request request, Entry<FormWidget, Function<Function<String, Optional<Object>>, URI>>... handlers) {
+	public static void doFormResponse(Request request, Entry<FormWidget, Function<Function<String, Optional<Object>>, String>>... handlers) {
 		var storage = new HashMap<String, FormHandler>();
 		for(var entry : handlers) {
 			Shared shared = new Shared(entry.getValue(), entry.getKey().fields.length);
@@ -85,7 +85,7 @@ public class Forms {
 			}
 		}
 		
-		var handler = new Holder<Function<Function<String, Optional<Object>>, URI>>();
+		var handler = new Holder<Function<Function<String, Optional<Object>>, String>>();
 		
 		doProcessForms(request, name -> storage.get(name).field.transform.get(), (name, reader) -> {
 			var widget = storage.get(name);
@@ -98,7 +98,7 @@ public class Forms {
 		});
 		
 		/* Parsed last field TODO stop parsing after this, ignore remaining multipart */
-		URI redirect = handler.value.apply(fieldName -> {
+		String redirect = handler.value.apply(fieldName -> {
 			var field = storage.get(fieldName).value;
 			if(field == null) {
 				return Optional.empty();
@@ -106,7 +106,8 @@ public class Forms {
 				return Optional.of(field.result());
 			}
 		});
-		request.getResponse().setHeader(HttpHeader.LOCATION, redirect.getRawPath());
+		//TODO probably not robust enough URI stringify
+		request.getResponse().setHeader(HttpHeader.LOCATION, redirect);
 		request.getResponse().setStatus(HttpStatus.SEE_OTHER_303);
 		request.setHandled(true);
 	}
@@ -211,6 +212,7 @@ public class Forms {
 			//TODO this could be optimized to use CharBuffer and decode during read.
 			// Hard to deal with edge case of char data remaining.
 			final ByteBufferOutputStream2 data = new ByteBufferOutputStream2();
+			String result;
 			
 			@Override
 			public void read(ByteBuffer item, boolean last, String filename) {
@@ -220,11 +222,14 @@ public class Forms {
 			@Override
 			public String result() {
 				try {
-					return StandardCharsets.UTF_8.newDecoder()
-						.onUnmappableCharacter(CodingErrorAction.REPORT)
-						.onMalformedInput(CodingErrorAction.REPORT)
-						.decode(data.toByteBuffer())
-						.toString();
+					if(result == null) {
+						result = StandardCharsets.UTF_8.newDecoder()
+							.onUnmappableCharacter(CodingErrorAction.REPORT)
+							.onMalformedInput(CodingErrorAction.REPORT)
+							.decode(data.toByteBuffer())
+							.toString();
+					}
+					return result;
 				} catch(CharacterCodingException e) {
 					throw new UncheckedIOException(e);
 				}

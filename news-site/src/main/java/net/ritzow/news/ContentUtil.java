@@ -4,6 +4,7 @@ import java.sql.SQLException;
 import java.util.Locale;
 import java.util.random.RandomGenerator;
 import java.util.random.RandomGeneratorFactory;
+import net.ritzow.news.database.ContentManager;
 
 public class ContentUtil {
 	private static final String VALID_CHARS = "abcdefghijklmnopqrstuvwxyz";
@@ -35,12 +36,14 @@ public class ContentUtil {
 		for(int i = 0; i < count; i++) {
 			int length = random.nextInt(200, 2000);
 			String title = ContentUtil.generateGibberish(random, false, 3, 5);
+			String url = Integer.toHexString(i);
 			for(Locale locale : cm.getSupportedLocales()) {
 				if(random.nextDouble() < 0.75) {
-					cm.newArticle(Integer.toHexString(i),
+					cm.newArticle(url,
 						locale, title + " " + locale.getDisplayLanguage(locale), ContentUtil.generateGibberish(random, true, length, 6));
 				}
 			}
+			var article = cm.getLatestArticle(url, cm.getArticleLocales(url).stream().findFirst().orElseThrow(), data -> new Object());
 		}
 	}
 }

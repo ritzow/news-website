@@ -6,7 +6,6 @@ import java.lang.ref.SoftReference;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
-import java.util.Base64;
 import java.util.Iterator;
 import java.util.function.Supplier;
 import net.ritzow.news.ResponseUtil.ContextRequestConsumer;
@@ -18,14 +17,14 @@ import org.eclipse.jetty.server.Response;
 
 import static net.ritzow.news.ResponseUtil.skipInput;
 
-class StaticContentHandler<T> implements ContextRequestConsumer<T, IOException> {
+class StaticContentHandler<T> implements ContextRequestConsumer<T> {
 	private final String contentType;
 	private final Supplier<InputStream> resource;
 	private SoftReference<byte[]> content;
 	private String etag;
 	
 	public static <T> StaticContentHandler<T> staticContent(Supplier<InputStream> resource, String contentType) {
-		return new StaticContentHandler<>(resource, contentType);
+		return new StaticContentHandler<T>(resource, contentType);
 	}
 	
 	public StaticContentHandler(Supplier<InputStream> resource, String contentType) {
@@ -54,7 +53,11 @@ class StaticContentHandler<T> implements ContextRequestConsumer<T, IOException> 
 		}
 		
 		/* Let browser cache for 10 minutes but also always check that there were no changes. */
-		baseResponse.getHttpFields().addCSV(HttpHeader.CACHE_CONTROL, "max-age=" + Duration.ofMinutes(10).toSeconds(), "no-cache");
+		baseResponse.getHttpFields().addCSV(HttpHeader.CACHE_CONTROL, 
+			"max-age=" + Duration.ofMinutes(10).toSeconds(), 
+			"no-cache", 
+			"stale-while-revalidate=" + Duration.ofSeconds(30).toSeconds()
+		);
 		//TODO referrer should be added elsewhere
 		baseResponse.setHeader("Referrer-Policy", "no-referrer");
 		baseResponse.setHeader(HttpHeader.ETAG, etag);
@@ -72,15 +75,15 @@ class StaticContentHandler<T> implements ContextRequestConsumer<T, IOException> 
 		request.setHandled(true);
 	}
 	
-	private byte[] load() throws IOException {
+	byte[] load() {
 		byte[] data;
 		try(var in = resource.get()) {
 			data = in.readAllBytes();
 			if(etag == null) {
 				MessageDigest hash = MessageDigest.getInstance("SHA-512");
-				etag = "\"" + Base64.getEncoder().withoutPadding().encodeToString(hash.digest(data)) + "\"";
+				etag = "\"" + ResourceUtil.bytesToString(hash.digest(data)) + "\"";
 			}
-		} catch(NoSuchAlgorithmException e) {
+		} catch(NoSuchAlgorithmException | IOException e) {
 			throw new RuntimeException(e);
 		}
 		content = new SoftReference<>(data);
