@@ -5,6 +5,7 @@ import j2html.rendering.FlatHtml;
 import j2html.rendering.HtmlBuilder;
 import j2html.tags.DomContent;
 import j2html.tags.Renderable;
+import j2html.tags.specialized.ButtonTag;
 import j2html.tags.specialized.FormTag;
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -109,8 +110,12 @@ public class PageTemplate {
 		return form().withMethod("post").withEnctype("multipart/form-data");
 	}
 	
+	public static ButtonTag postButton() {
+		return button().withType("submit");
+	}
+	
 	public static DomContent mainBox(DomContent... content) {
-		return div().withClasses("content-center", "foreground").with(content);
+		return div().withClasses("content-center").with(content);
 	}
 	
 	public static DomContent articleBox(String title, String url) {
@@ -132,42 +137,53 @@ public class PageTemplate {
 		);
 	}
 	
-	private static final DomContent HEAD_HTML = TagCreator.head(
-		named("title"),
-		freeze(
+	private static final DomContent HEAD_STATICS = freeze(
+		meta().withName("robots").withContent("noindex"),
+		meta().withName("viewport")
+			.withContent("width=device-width,initial-scale=1"),
+		meta().withCharset("utf-8"),
+		meta().withName("referrer").withContent("no-referrer")
+	);
+//		TagCreator.head(
+//		named("title"),
+//		
+//		//TODO this can be used to login to other trusted domains, can send multiple.
+//		//named("session-init")
+	
+	@RequiresDynamicHtml
+	public static DomContent head(Request request, String title, String iconPath, 
+			String opensearchPath, String stylePath, Set<String> peers) {
+		return TagCreator.head(
+			title(title),
 			link()
 				.withRel("icon")
-				.withHref("/icon.svg")
+				.withHref(iconPath)
+				//.withHref("/icon.svg")
 				.withType("image/svg+xml"),
 			link()
 				.withRel("search")
-				.withHref("/opensearch")
+				.withHref(opensearchPath)
+				//.withHref("/opensearch")
 				.withType("application/opensearchdescription+xml")
 				.withTitle("Ritzow Net"),
-			link().withRel("stylesheet").withHref("/style.css"),
-			meta().withName("robots").withContent("noindex"),
-			meta().withName("viewport")
-				.withContent("width=device-width,initial-scale=1"),
-			meta().withCharset("utf-8"),
-			meta().withName("referrer").withContent("no-referrer")
-		)
-		//TODO this can be used to login to other trusted domains, can send multiple.
-		//named("session-init")
-	);
-	
-	@RequiresDynamicHtml
-	public static DomContent head(Request request, String title, Set<String> peers) {
-		return dynamic(HEAD_HTML, Map.of(
-			"title", title(title)
-			/* TODO disable these if already logged in at peer websites */
-			/*"session-init", request.getSession(false) != null ? eachStreamed(
-				peers.stream().map(peer -> link()
-					.withRel("preload")
-					.withHref("https://" + peer + "/session?id=" + request.getSession(false).getId())
-					.attr("as", "fetch")
-					.attr("crossorigin", "use-credentials"))
-			) : each()*/
-		));
+			link().withRel("stylesheet")
+				.withHref("/content/" + NewsSite.RES_FONT_FACE.getKey()), //TODO
+			link().withRel("stylesheet")
+				.withHref(stylePath),
+				//.withHref("/style.css"),
+			HEAD_STATICS
+		);
+//		return dynamic(HEAD_HTML, Map.of(
+//			"title", title(title)
+//			/* TODO disable these if already logged in at peer websites */
+//			/*"session-init", request.getSession(false) != null ? eachStreamed(
+//				peers.stream().map(peer -> link()
+//					.withRel("preload")
+//					.withHref("https://" + peer + "/session?id=" + request.getSession(false).getId())
+//					.attr("as", "fetch")
+//					.attr("crossorigin", "use-credentials"))
+//			) : each()*/
+//		));
 	}
 	
 	public static FormTag mainForm() {

@@ -5,6 +5,7 @@ import j2html.tags.specialized.BodyTag;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 import net.ritzow.news.*;
 import net.ritzow.news.page.Login;
@@ -52,7 +53,9 @@ public class CommonComponents {
 			)
 		)
 	);
-	private static final DomContent LOGO_HTML = logo("/icon.svg");
+	
+	private static final DomContent LOGO_HTML = logo("/content/" + NewsSite.RES_ICON.fileName() /*"/icon.svg"*/);
+	
 	@RequiresDynamicHtml
 	@RequiresNamedHtml({"content"})
 	private static final DomContent STATIC_CENTERED_CONTENT = each(
@@ -66,15 +69,27 @@ public class CommonComponents {
 	);
 	
 	@RequiresDynamicHtml
-	public static DomContent page(Request request, NewsSite site, String title, Locale locale, DomContent fullContent) {
+	public static DomContent page(Request request, NewsSite site, String title, String iconPath,
+			String opensearchPath, String stylePath, Locale locale, DomContent fullContent) {
 		return html().withLang(locale.toLanguageTag()).with(
-			head(request, title, site.peers.stream().filter(host -> !host.equals(request.getHttpURI().getHost())).collect(Collectors.toSet())),
+			head(
+				request, 
+				title,
+				iconPath,
+				opensearchPath,
+				stylePath,
+				sites(site, request)
+			),
 			dynamic(PAGE_BODY_HTML, Map.of(
 				"full-content", fullContent,
 				"time", rawHtml(NewsSite.serverTime(locale)),
 				"heap", dynamic(state -> NewsSite.memoryUsage(locale))
 			))
 		);
+	}
+	
+	private static Set<String> sites(NewsSite site, Request request) {
+		return site.peers.stream().filter(host -> !host.equals(request.getHttpURI().getHost())).collect(Collectors.toSet());
 	}
 	
 	@RequiresDynamicHtml

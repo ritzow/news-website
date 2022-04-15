@@ -1,10 +1,5 @@
 @charset "utf-8";
 
-@font-face {
-	font-family: "Open Sans";
-	src: url("/opensans.ttf") format("truetype");
-}
-
 /* https://stackoverflow.com/questions/90178/make-a-div-fill-the-height-of-the-remaining-screen-space */
 
 /* entire webpage */
@@ -21,7 +16,7 @@
 	--pad-big: 32px;
 	--logo-hover: drop-shadow(0 0 8px rgba(255, 0, 0, 0.5));
 	--shadow: drop-shadow(0 0 8px rgba(0, 0, 0, 0.5));
-	--display-font: system-ui;
+	--display-font: "Open Sans";
 	--unselected-text-color: rgb(163, 163, 163);
 	--underline-thickness: 0.1em;
 	--content-box-width: 500px;
@@ -35,7 +30,7 @@
 
 body {
 	all: initial;
-	font-family: "Open Sans", ui-sans-serif;
+	font-family: var(--display-font), ui-sans-serif;
 	display: flex;
 	flex-flow: column;
 	height: 100%;
@@ -176,10 +171,7 @@ body > .page-footer {
 }
 
 .content-center {
-	width: var(--content-box-width);
-	border-radius: var(--radius);
-	resize: horizontal;
-	overflow: hidden;
+	
 }
 
 .content-right {
@@ -188,6 +180,23 @@ body > .page-footer {
 	display: flex;
 	justify-content: start;
 	align-items: flex-end;
+}
+
+.main-box {
+	width: var(--content-box-width);
+	border-radius: var(--radius);
+	resize: horizontal;
+	overflow: hidden;
+}
+
+.comment-box {
+	border-radius: var(--radius);
+	margin-top: var(--pad);
+	margin-bottom: var(--pad);
+}
+
+.comment-text-box {
+	
 }
 
 .article-box {
@@ -260,13 +269,7 @@ body > .page-footer {
 .text-field {
 	background-color: rgb(243, 243, 243);
 	border: initial;
-	// border-top: none;
-	// border-left: none;
-	// border-right: none;
-	//border-width: 3px;
-	//border-color: black;
 	padding: var(--pad);
-	//border-bottom: 2px solid black;
 	border-radius: var(--radius);
 }
 
@@ -274,30 +277,6 @@ body > .page-footer {
 	outline: none;
 	background-color: rgb(218, 218, 218);
 }
-
-/* .form-element {
-	width: 100%;
-	padding: 10px;
-	box-sizing: border-box;
-	border: none;
-	box-shadow: none;
-	outline-style: none;
-	background-color: #cccccc;
-	font-size: 1rem;
-	resize: vertical;
-}
-
-.form-element:focus {
-	background-color: #b3b3b3;
-}
-
-.form-element:valid {
-	border-bottom: 2px solid black;
-}
-
-.form-element:invalid {
-	border-bottom: 2px solid red;
-} */
 
 .markdown {
 	all: initial;

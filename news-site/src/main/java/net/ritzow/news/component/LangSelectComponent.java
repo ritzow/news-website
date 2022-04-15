@@ -41,8 +41,8 @@ public class LangSelectComponent {
 		doRefreshPage(request);
 	}
 	
-	public static URI doLangSelectForm(Request request, NewsSite site, Function<String, Optional<Object>> values) {
+	public static String doLangSelectForm(Request request, NewsSite site, Function<String, Optional<Object>> values) {
 		values.apply("lang-select").ifPresent(lang -> processLangForm(request, site, (String)lang));
-		return request.getHttpURI().toURI();
+		return request.getHttpURI().getPathQuery();
 	}
 }

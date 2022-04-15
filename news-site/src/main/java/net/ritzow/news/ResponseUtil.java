@@ -80,16 +80,20 @@ public class ResponseUtil {
 	}
 	
 	@FunctionalInterface
-	public interface RequestConsumer<S, T extends Exception> {
-		void accept(Request request, S data) throws T;
+	public interface RequestConsumer<S> {
+		void accept(Request request, S data) throws IOException;
 	}
 	
 	@FunctionalInterface
-	public interface ContextRequestConsumer<S, T extends Exception> {
-		void accept(Request request, S data, Iterator<String> path) throws T;
+	public interface ContextRequestConsumer<S> {
+		void accept(Request request, S data, Iterator<String> path) throws IOException;
 	}
 	
-	public static <S, T extends Exception> RequestConsumer<S, T> matchStaticPaths(ContextRequestConsumer<S, T> paths) {
+	public static <S> JettySetup.RequestConsumer consumer(S data, RequestConsumer<S> consumer) {
+		return request -> consumer.accept(request, data);
+	}
+	
+	public static <S> RequestConsumer<S> matchStaticPaths(ContextRequestConsumer<S> paths) {
 		return (request, data) -> {
 			var path = ResponseUtil.path(request);
 			paths.accept(request, data, path);
@@ -97,8 +101,8 @@ public class ResponseUtil {
 	}
 	
 	@SafeVarargs
-	public static <S, T extends Exception> ContextRequestConsumer<S, T> rootNoMatchOrNext(RequestConsumer<S, ? extends T> root,
-			ContextRequestConsumer<S, ? extends T> noMatch, Entry<String, ContextRequestConsumer<S, ? extends T>>... paths) {
+	public static <S> ContextRequestConsumer<S> rootNoMatchOrNext(RequestConsumer<S> root,
+			ContextRequestConsumer<S> noMatch, Entry<String, ContextRequestConsumer<S>>... paths) {
 		var map = Map.ofEntries(paths);
 		return (request, data, it) -> {
 			if(it.hasNext()) {

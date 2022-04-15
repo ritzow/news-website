@@ -8,16 +8,20 @@ import java.security.KeyStoreException;
 import java.security.NoSuchAlgorithmException;
 import java.security.cert.CertificateException;
 import java.sql.SQLException;
+import java.text.MessageFormat;
 import java.text.NumberFormat;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.FormatStyle;
 import java.util.*;
 import net.ritzow.news.component.CommonComponents;
+import net.ritzow.news.database.ContentManager;
 import net.ritzow.news.page.ArticlePage;
 import net.ritzow.news.page.ExceptionPage;
 import net.ritzow.news.page.MainPage;
 import net.ritzow.news.page.SessionPage;
+import net.ritzow.news.response.ContentSource;
+import net.ritzow.news.response.NamedResourceConsumer;
 import org.eclipse.jetty.http.HttpStatus;
 import org.eclipse.jetty.server.Request;
 import org.eclipse.jetty.server.Server;
@@ -26,10 +30,8 @@ import static j2html.TagCreator.*;
 import static java.util.Map.entry;
 import static net.ritzow.news.JettySetup.newStandardServer;
 import static net.ritzow.news.PageTemplate.context;
-import static net.ritzow.news.ResourceUtil.jarResourceOpener;
 import static net.ritzow.news.ResourceUtil.properties;
 import static net.ritzow.news.ResponseUtil.*;
-import static net.ritzow.news.StaticContentHandler.staticContent;
 
 // TODO use integrity attribute to verify content if delivered via CDN and use crossorigin="anonymous"
 // TODO set loading="lazy" on img HTML elements.
@@ -44,11 +46,31 @@ public final class NewsSite {
 	public final Translator<String> translator;
 	public final Set<String> peers;
 	
-	public static NewsSite start(boolean requireSni, Path keyStore, String keyStorePassword, Set<String> peers, InetAddress... bind) throws Exception {
+	public static NewsSite start(boolean requireSni, Path keyStore, String keyStorePassword, 
+			Set<String> peers, InetAddress... bind) throws Exception {
 		var server = new NewsSite(requireSni, keyStore, keyStorePassword, peers, bind);
 		server.server.start();
 		return server;
 	}
+	
+	public static final JarContent<NewsSite> 
+		RES_GLOBAL_CSS = JarContent.create("/css/global.css", "text/css"),
+		RES_ICON = JarContent.create("/image/icon.svg", "image/svg+xml"),
+		RES_OPENSEARCH = JarContent.create("/xml/opensearch.xml", "application/opensearchdescription+xml"),
+		RES_FONT = JarContent.create("/font/OpenSans-Regular.ttf", "font/ttf");
+	
+	public static final NamedResourceConsumer<NewsSite>
+		RES_FONT_FACE = NamedResourceConsumer.ofHashed(
+			ContentSource.ofString("""
+				@font-face {
+					font-family: "Open Sans";
+					src: url("/content/URLHERE") format("truetype");
+					font-display: swap;
+				}
+				""".replace("URLHERE", RES_FONT.fileName()),
+				"text/css"
+			)
+		);
 	
 	private NewsSite(boolean requireSni, Path keyStore, String keyStorePassword, Set<String> peers, InetAddress... bind) throws
 			CertificateException,
@@ -60,17 +82,28 @@ public final class NewsSite {
 		ContentUtil.genArticles(cm);
 		translator = Translator.ofProperties(properties("/lang/welcome.properties"));
 		this.peers = peers;
-		var route = matchStaticPaths(
+		RequestConsumer<NewsSite> route = matchStaticPaths(
 			rootNoMatchOrNext(
 				MainPage::mainPageGenerator,
 				NewsSite::doGeneric404,
 				entry("article", ArticlePage::articlePageProcessor),
 //				entry("shutdown", this::shutdownPage),
-				entry("opensearch", staticContent(jarResourceOpener("/xml/opensearch.xml"),
-					"application/opensearchdescription+xml")),
-				entry("style.css", staticContent(jarResourceOpener("/css/global.css"), "text/css")),
-				entry("icon.svg", staticContent(jarResourceOpener("/image/icon.svg"), "image/svg+xml")),
-				entry("opensans.ttf", staticContent(jarResourceOpener("/font/OpenSans-Regular.ttf"), "font/ttf")),
+//				entry("opensearch", staticContent(
+//					jarResourceOpener("/xml/opensearch.xml"),
+//					"application/opensearchdescription+xml"
+//				)),
+				entry("content", rootNoMatchOrNext(
+					null,
+					NewsSite::doGeneric404,
+					RES_ICON,
+					RES_GLOBAL_CSS,
+					RES_OPENSEARCH,
+					RES_FONT,
+					RES_FONT_FACE
+				)),
+				//entry("style.css", staticContent(jarResourceOpener("/css/global.css"), "text/css")),
+//				entry("icon.svg", staticContent(jarResourceOpener("/image/icon.svg"), "image/svg+xml")),
+				//("opensans.ttf", staticContent(jarResourceOpener("/font/OpenSans-Regular.ttf"), "font/ttf")),
 				entry("session", SessionPage::sessionPage)
 			)
 		);
@@ -79,7 +112,7 @@ public final class NewsSite {
 			requireSni,
 			keyStore, 
 			keyStorePassword,
-			request -> route.accept(request, this), 
+			consumer(this, route), 
 			request -> ExceptionPage.exceptionPageHandler(request, this), 
 			bind
 		);
@@ -146,7 +179,11 @@ public final class NewsSite {
 	public static void doDecoratedPage(int status, Request request, NewsSite site, Locale mainLocale, String title, DomContent body) {
 		doGetHtmlStreamed(request, status, List.of(mainLocale),
 			context(request, site.translator, Map.of(),
-				CommonComponents.page(request, site, title, mainLocale,
+				CommonComponents.page(request, site, title, 
+					"/content/" + RES_ICON.fileName(),
+					"/content/" + RES_OPENSEARCH.fileName(),
+					"/content/" + RES_GLOBAL_CSS.fileName(),
+					mainLocale,
 					CommonComponents.content(
 						CommonComponents.header(request, site),
 						body

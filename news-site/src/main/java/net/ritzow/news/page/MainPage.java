@@ -1,5 +1,6 @@
 package net.ritzow.news.page;
 
+import j2html.tags.DomContent;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.Locale;
@@ -12,10 +13,11 @@ import org.eclipse.jetty.http.HttpMethod;
 import org.eclipse.jetty.http.HttpStatus;
 import org.eclipse.jetty.server.Request;
 
-import static j2html.TagCreator.p;
-import static j2html.TagCreator.rawHtml;
+import static j2html.TagCreator.*;
+import static j2html.TagCreator.h1;
 import static java.util.Map.entry;
 import static net.ritzow.news.Forms.doFormResponse;
+import static net.ritzow.news.PageTemplate.*;
 
 public class MainPage {
 	public static final FormWidget LOGIN_FORM = FormWidget.of(
@@ -42,7 +44,7 @@ public class MainPage {
 				
 				Locale bestLocale = NewsSite.pageLocale(request, site);
 				NewsSite.doDecoratedPage(HttpStatus.OK_200, request, site, bestLocale, "RedNet!",
-					ArticlePage.generateArticlesList(bestLocale, site)
+					generateArticlesList(bestLocale, site)
 				);
 			}
 			
@@ -55,5 +57,16 @@ public class MainPage {
 				entry(Login.LOGGED_IN_FORM, values -> Login.doLoggedInForm(request ,values))
 			);
 		}
+	}
+
+	public static DomContent generateArticlesList(Locale bestLocale, NewsSite site) {
+		return div().withClasses("main-box", "foreground").with(
+			h1(translated("greeting")).withClass("title"),
+			dynamic(state -> eachStreamed(
+				site.cm.getArticlesForLocale(bestLocale).stream().map(
+					article3 -> articleBox(article3.title(), "/article/" + article3.urlname())
+				)
+			))
+		);
 	}
 }

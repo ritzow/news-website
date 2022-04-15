@@ -62,7 +62,7 @@ public class Login {
 		);
 	}
 	
-	public static URI doLoginForm(Request request, NewsSite site, Function<String, Optional<Object>> values) {
+	public static String doLoginForm(Request request, NewsSite site, Function<String, Optional<Object>> values) {
 		var login = values.apply("login-action");
 		
 		if(login.isPresent()) {
@@ -84,14 +84,14 @@ public class Login {
 				Arrays.fill(password, (byte)0);
 			}
 		}
-		return request.getHttpURI().toURI();
+		return request.getHttpURI().getPathQuery();
 	}
 	
-	public static URI doLoggedInForm(Request request, Function<String, Optional<Object>> values) {
+	public static String doLoggedInForm(Request request, Function<String, Optional<Object>> values) {
 		if(values.apply("logout").filter(val -> val.equals("logout")).isPresent()) {
 			HttpUser.getExistingSession(request).ifPresent(session -> session.user(null));
 		}
-		return request.getHttpURI().toURI();
+		return request.getHttpURI().getPathQuery();
 	}
 	
 	private static void accountLogin(Request request, NewsSite site, String username, byte[] password) {
