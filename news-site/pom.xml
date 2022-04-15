@@ -11,6 +11,7 @@
         <maven.compiler.release>17</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     </properties>
+    
     <build>
         <resources>
             <resource>
@@ -50,12 +51,17 @@
             </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-resources-plugin</artifactId>
+                <version>3.2.0</version>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-jar-plugin</artifactId>
                 <version>3.2.2</version>
                 <configuration>
                     <archive>
                         <manifest>
-                            <mainClass>net.ritzow.news.RunSite</mainClass>
+                            <mainClass>net.ritzow.news.run.RunSite</mainClass>
                         </manifest>
                     </archive>
                 </configuration>
@@ -89,6 +95,13 @@
             <groupId>org.eclipse.jetty</groupId>
             <artifactId>jetty-jmx</artifactId>
             <version>11.0.7</version>
+        </dependency>
+        
+        <!-- Security -->
+        <dependency>
+            <groupId>org.bouncycastle</groupId>
+            <artifactId>bcpkix-jdk15on</artifactId>
+            <version>1.70</version>
         </dependency>
 
         <!-- Content manipulation and generation -->

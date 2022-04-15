@@ -8,6 +8,6 @@
   <modules>
     <module>news-site</module>
     <module>runner</module>
-    <module>news-site-resource-plugin</module>
+    <!--<module>news-site-resource-plugin</module>-->
   </modules>
 </project>
