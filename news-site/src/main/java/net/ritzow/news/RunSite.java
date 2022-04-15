@@ -10,9 +10,8 @@ public class RunSite {
 			false, 
 			Path.of(System.getProperty("net.ritzow.certs")), 
 			System.getProperty("net.ritzow.pass"),
-			Set.of("127.0.0.1", "[::1]"),
-			InetAddress.getByName("::1"),
-			InetAddress.getByName("127.0.0.1")
+			Set.of("127.0.0.1", "[::1]", "ritzow.net"),
+			InetAddress.getByName("0.0.0.0")
 		);
 	}
 }
