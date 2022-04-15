@@ -1,4 +1,4 @@
-package net.ritzow.news;
+package net.ritzow.news.database;
 
 import com.zaxxer.hikari.HikariDataSource;
 import java.io.*;
@@ -10,11 +10,13 @@ import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.security.spec.InvalidKeySpecException;
 import java.sql.*;
+import java.time.Instant;
 import java.util.*;
 import java.util.Map.Entry;
 import java.util.function.Function;
 import javax.crypto.SecretKeyFactory;
 import javax.crypto.spec.PBEKeySpec;
+import net.ritzow.news.CharsetUtil;
 
 import static java.util.Map.entry;
 
@@ -60,6 +62,7 @@ public final class ContentManager {
 		runMultiple(
 			"CREATE TYPE URLNAME AS VARCHAR(64)",
 			"CREATE TYPE LOCALENAME AS VARCHAR(35)",
+			"CREATE TYPE USERNAME AS VARCHAR(64)",
 			"""
 			CREATE TABLE locales (
 				id SMALLINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -91,8 +94,18 @@ public final class ContentManager {
 				id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
 				pwHash BINARY VARYING(512) NOT NULL,
 				pwSalt BINARY VARYING(16) NOT NULL,
-				username VARCHAR(64) NOT NULL UNIQUE,
-			)"""
+				username USERNAME NOT NULL UNIQUE,
+			)""",
+			"""
+			CREATE TABLE comments (
+				id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+				article INTEGER NOT NULL,
+				user INTEGER NOT NULL,
+				timestamp BIGINT NOT NULL,
+				content BLOB NOT NULL,
+				FOREIGN KEY (user) REFERENCES accounts(id),
+			)
+			"""
 		);
 		
 		uploadLocales();
@@ -127,19 +140,20 @@ public final class ContentManager {
 			""",
 			"""
 			CREATE FUNCTION get_latest_article(IN in_urlname URLNAME, IN in_locale LOCALENAME)
-				RETURNS TABLE (title BLOB, markdown BLOB)
+				RETURNS TABLE (title BLOB, markdown BLOB, id INTEGER)
 				READS SQL DATA
 			BEGIN ATOMIC
-				DECLARE TABLE intermediate (title BLOB, markdown BLOB, revision INTEGER);
+				DECLARE TABLE intermediate (title BLOB, markdown BLOB, revision INTEGER, id INTEGER);
 				INSERT INTO intermediate (SELECT
 						articles_content.title,
 						articles_content.markdown,
-						articles_content.revision
+						articles_content.revision,
+						articles_content.id
 					FROM (articles INNER JOIN articles_content
 					ON articles.id = articles_content.id)
 					WHERE articles.urlname = in_urlname
 					AND articles_content.locale = (SELECT id FROM locales WHERE code = in_locale));
-				RETURN TABLE (SELECT title, markdown FROM intermediate
+				RETURN TABLE (SELECT title, markdown, id FROM intermediate
 					WHERE revision = (SELECT MAX(revision) FROM intermediate));
 			END
 			""",
@@ -184,6 +198,30 @@ public final class ContentManager {
 			BEGIN ATOMIC
 				INSERT INTO accounts (username, pwSalt, pwHash) VALUES (in_username, in_pwSalt, in_pwHash);
 				SET id = IDENTITY();
+			END
+			""",
+			"""
+			CREATE PROCEDURE new_comment(IN in_article INTEGER, IN in_user INTEGER, IN in_timestamp BIGINT, IN in_content BLOB, OUT comment_id INTEGER)
+				MODIFIES SQL DATA
+			BEGIN ATOMIC
+				INSERT INTO comments (article, user, timestamp, content) VALUES (in_article, in_user, in_timestamp, in_content);
+				SET comment_id = IDENTITY();
+			END
+			""",
+			//TODO can't make out_time a BIGINT?!?!?!!? WILL CAUSE BREAKAGE!!!
+			"""
+			CREATE FUNCTION list_comments(IN article_id INTEGER)
+				RETURNS TABLE (out_id INTEGER, out_username USERNAME, out_time BIGINT, out_content BLOB)
+				READS SQL DATA
+			BEGIN ATOMIC
+				RETURN TABLE (
+					SELECT comments.id, accounts.username, comments.timestamp, comments.content
+					FROM comments
+					JOIN accounts
+					ON accounts.id = comments.user
+					WHERE comments.article = article_id
+					ORDER BY timestamp DESC
+				);
 			END
 			"""
 		);
@@ -291,8 +329,10 @@ public final class ContentManager {
 			try(var st = db.prepareCall("call new_article(?, ?, ?, ?)")) {
 				st.setString(1, urlName);
 				st.setString(2, locale.toLanguageTag());
-				st.setBlob(3, new ByteArrayInputStream(title.getBytes(StandardCharsets.UTF_8)));
-				st.setBinaryStream(4, new ByteArrayInputStream(markdown.getBytes(StandardCharsets.UTF_8)));
+				byte[] data = title.getBytes(StandardCharsets.UTF_8);
+				st.setBlob(3, new ByteArrayInputStream(data), data.length);
+				data = markdown.getBytes(StandardCharsets.UTF_8);
+				st.setBlob(4, new ByteArrayInputStream(data), data.length);
 				st.execute();
 			}
 		} catch(SQLException e) {
@@ -356,7 +396,7 @@ public final class ContentManager {
 		}
 	}
 	
-	public record Article<T>(String title, T content) {}
+	public record Article<T>(String title, T content, int id) {}
 	
 	/* Returned reader must be closed */
 	public <T> Optional<Article<T>> getLatestArticle(String urlName, Locale locale, Function<Reader, T> transform) {
@@ -373,7 +413,8 @@ public final class ContentManager {
 						var content = transform.apply(new InputStreamReader(blob.getBinaryStream(),
 							CharsetUtil.decoder(StandardCharsets.UTF_8)));
 						blob.free();
-						return Optional.of(new Article<>(title, content));
+						int articleId = result.getInt("id");
+						return Optional.of(new Article<>(title, content, articleId));
 					} else {
 						return Optional.empty();
 					}
@@ -389,5 +430,74 @@ public final class ContentManager {
 			throw new IOException("Blob too big");
 		}
 		return new String(blob.getBytes(1, (int)blob.length()), StandardCharsets.UTF_8);
+	}
+	
+	public int newComment(int articleId, int userId, Instant timestamp, String content) {
+		try(var db = this.db.getConnection()) {
+			try(var st = db.prepareCall("call new_comment(?, ?, ?, ?, ?)")) {
+				st.setInt(1, articleId);
+				st.setInt(2, userId);
+				st.setLong(3, timestamp.toEpochMilli());
+				st.setBlob(4, new ByteArrayInputStream(
+					content.getBytes(StandardCharsets.UTF_8)));
+				st.registerOutParameter(5, JDBCType.INTEGER);
+				st.execute();
+				return st.getInt(5);
+			}
+		} catch(SQLException e) {
+			throw new RuntimeException(e);
+		}
+	}
+	
+	public record Comment(String username, Instant timestamp, String content, int id) {}
+	
+	public List<Comment> listCommentsNewestFirst(int articleId) {
+		try(var db = this.db.getConnection()) {
+			try(var st = db.prepareCall("call list_comments(?)")) {
+				st.setInt(1, articleId);
+				try(var result = st.executeQuery()) {
+					var comments = new ArrayList<Comment>(0);
+					while(result.next()) {
+						int commentId = result.getInt("comments.id");
+						String username = result.getString("accounts.username");
+						Instant timestamp = Instant.ofEpochMilli(result.getLong("comments.timestamp"));
+						Blob content = result.getBlob("comments.content");
+						comments.add(new Comment(username, timestamp, readBlobUtf8(content), commentId));
+						//content.free();
+					}
+					return comments;
+				}
+			}
+		} catch(SQLException | IOException e) {
+			throw new RuntimeException(e);
+		}
+	}
+	
+	public int getArticleId(String urlname) {
+		try(var db = this.db.getConnection()) {
+			try(var st = db.prepareStatement("SELECT id FROM articles WHERE urlname = ? LIMIT 1")) {
+				st.setString(1, urlname);
+				try(var rs = st.executeQuery()) {
+					rs.next();
+					return rs.getInt(1);
+				}
+			}
+		} catch(SQLException e) {
+			throw new RuntimeException(e);
+		}
+	}
+
+	public int getUserId(String username) {
+		try(var db = this.db.getConnection()) {
+			try(var st = db.prepareStatement("SELECT id FROM accounts WHERE username = ? LIMIT 1")) {
+				st.setString(1, username);
+				try(var rs = st.executeQuery()) {
+					rs.next();
+					return rs.getInt(1);
+				}
+			}
+		} catch(SQLException e) {
+			throw new RuntimeException(e);
+		}
 	}
 }

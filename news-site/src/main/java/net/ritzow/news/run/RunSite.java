@@ -1,8 +1,9 @@
-package net.ritzow.news;
+package net.ritzow.news.run;
 
 import java.net.InetAddress;
 import java.nio.file.Path;
 import java.util.Set;
+import net.ritzow.news.NewsSite;
 
 public class RunSite {
 	public static void main(String[] args) throws Exception {
