@@ -9,6 +9,7 @@ import org.eclipse.jetty.http.HttpHeader;
 import org.eclipse.jetty.http.HttpStatus;
 import org.eclipse.jetty.server.Request;
 
+/* TODO make a similar one that streams from inputstream */
 public class CachingImmutableRequestConsumer<T> implements ContextRequestConsumer<T> {
 	private final ContentSource src;
 	private SoftReference<byte[]> data;
@@ -37,10 +38,11 @@ public class CachingImmutableRequestConsumer<T> implements ContextRequestConsume
 		byte[] bytes = load();
 
 		response.getHttpFields().addCSV(HttpHeader.CACHE_CONTROL,
-			"max-age=" + Duration.ofMinutes(10).toSeconds(),
+			"max-age=" + Duration.ofDays(7).toSeconds(),
 			"public",
-			"immutable",
-			"stale-while-revalidate=" + Duration.ofSeconds(30).toSeconds()
+			"immutable"//,
+			//TODO this isn't used here (since we're immutable), but it could maybe be used somewhere else
+			//"stale-while-revalidate=" + Duration.ofSeconds(30).toSeconds()
 		);
 		response.setContentType(src.mimeType());
 		response.setContentLength(bytes.length);
