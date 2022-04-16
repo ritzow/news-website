@@ -37,14 +37,14 @@ public class PackageMojo extends AbstractMojo {
 			Path bundleDir = Path.of(session.getCurrentProject()
 				.getBuild().getDirectory(), "bundle");
 			
-			var mainJar = RunnerSetup.mainJar(session).toPath();
+			var mainJar = RunnerSetup.mainJar(session).toPath().toAbsolutePath();
 			var libs = RunnerSetup.libraries(session);
 			
 			Files.createDirectories(bundleDir);
-
-			mainJar = Files.copy(
+			
+			var mainOutJar = /*mainJar =*/ Files.copy(
 				mainJar, 
-				bundleDir.resolve(mainJar.getFileName()), 
+				bundleDir.resolve(mainJar.getFileName().toString()),
 				StandardCopyOption.REPLACE_EXISTING
 			);
 
@@ -55,9 +55,15 @@ public class PackageMojo extends AbstractMojo {
 				jars.add(Files.copy(jar, bundleDir.resolve(jar.getFileName()),
 					StandardCopyOption.REPLACE_EXISTING));
 			}
-			
 			/* Remove no longer used jars */
-			Files.list(bundleDir).filter(file -> !jars.contains(file)).forEach(file -> {
+			Files.list(bundleDir).filter(file -> {
+				try {
+					return !jars.contains(file) && !Files.isSameFile(file, mainOutJar);
+				} catch(
+					IOException e) {
+					throw new RuntimeException(e);
+				}
+			}).forEach(file -> {
 				try {
 					Files.delete(file);
 				} catch(IOException e) {
@@ -65,9 +71,9 @@ public class PackageMojo extends AbstractMojo {
 				}
 			});
 
-			getLog().info("Windows: " + args(mainJar, bundleDir, jars, ';'));
-			getLog().info("Linux: " + args(mainJar, bundleDir, jars, ':'));
-			getLog().info("Current: " + args(mainJar, bundleDir, jars, File.pathSeparatorChar));
+			getLog().info("Windows: " + args(mainOutJar, bundleDir, jars, ';'));
+			getLog().info("Linux: " + args(mainOutJar, bundleDir, jars, ':'));
+			getLog().info("Current: " + args(mainOutJar, bundleDir, jars, File.pathSeparatorChar));
 			getLog().info("Libraries and jar successfully copied to " +
 				session.getTopLevelProject().getBasedir().toPath().relativize(bundleDir));
 			
@@ -81,7 +87,7 @@ public class PackageMojo extends AbstractMojo {
 		return RunnerSetup.args(
 			"java",
 			RunnerSetup.mainModuleName(mainJar),
-			RunnerSetup.modulePathString(File.pathSeparatorChar,
+			RunnerSetup.modulePathString(separator,
 				bundleDir.relativize(mainJar).toString(),
 				jars.stream().map(bundleDir::relativize).map(Path::toString)),
 			jvmProps
