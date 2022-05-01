@@ -7,20 +7,15 @@ import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.lang.management.ManagementFactory;
 import java.net.InetAddress;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.security.KeyStore;
-import java.security.KeyStoreException;
-import java.security.NoSuchAlgorithmException;
-import java.security.cert.CertificateException;
 import java.util.EnumSet;
+import java.util.List;
 import org.eclipse.jetty.alpn.server.ALPNServerConnectionFactory;
-import org.eclipse.jetty.http.CookieCompliance;
-import org.eclipse.jetty.http.HttpCompliance;
+import org.eclipse.jetty.http.*;
 import org.eclipse.jetty.http.HttpCookie.SameSite;
-import org.eclipse.jetty.http.HttpStatus;
-import org.eclipse.jetty.http.UriCompliance;
 import org.eclipse.jetty.http2.server.HTTP2ServerConnectionFactory;
+import org.eclipse.jetty.http3.server.HTTP3ServerConnectionFactory;
+import org.eclipse.jetty.http3.server.HTTP3ServerConnector;
 import org.eclipse.jetty.jmx.MBeanContainer;
 import org.eclipse.jetty.server.*;
 import org.eclipse.jetty.server.handler.*;
@@ -43,24 +38,22 @@ public class JettySetup {
 	
 	public static Server newStandardServer(
 			boolean requireSni, 
-			Path keyStore, 
+			KeyStore keyStore, 
 			String keyStorePassword, 
 			RequestConsumer mainHandler, 
 			RequestConsumer errorHandler, 
-			InetAddress... bind)
-		
-			throws CertificateException, 
-			IOException, 
-			KeyStoreException, 
-			NoSuchAlgorithmException {
+			InetAddress... bind) {
 		
 		QueuedThreadPool pool = new QueuedThreadPool();
 		pool.setName("pool");
 		Server server = new Server(pool);
 		
+		var sslContextFactory = sslContext(keyStore, keyStorePassword);
+		
 		for(var addr : bind) {
 			server.addConnector(httpPlaintextConnector(server, addr, httpConfig(requireSni)));
-			server.addConnector(httpSslConnector(server, addr, httpConfig(requireSni), keyStore, keyStorePassword));
+			server.addConnector(httpSslConnector(server, addr, httpConfig(requireSni), sslContextFactory));
+			//server.addConnector(http3Connector(server, addr, httpConfig(requireSni), sslContextFactory));
 		}
 
 		var onError = new ErrorHandler() {
@@ -130,21 +123,44 @@ public class JettySetup {
 		return http11Insecure;
 	}
 	
-	private static ServerConnector httpSslConnector(Server server, InetAddress bind, HttpConfiguration config, Path keyStorePkcs12, String keyStorePassword) 
-			throws CertificateException, KeyStoreException, IOException, NoSuchAlgorithmException {
+	private static ServerConnector httpSslConnector(Server server, InetAddress bind, HttpConfiguration config, SslContextFactory.Server sslContext) {
 		var http1 = new HttpConnectionFactory(new HttpConfiguration(config));
 		var http2 = new HTTP2ServerConnectionFactory(new HttpConfiguration(config));
-		var alpn = new ALPNServerConnectionFactory("h2", "http/1.1");
-		alpn.setDefaultProtocol(http2.getProtocol());
-		SslContextFactory.Server sslFactory = new SslContextFactory.Server();
-		/* Create PKCS12 file: https://gist.github.com/novemberborn/4eb91b0d166c27c2fcd4 */
-		sslFactory.setKeyStore(Certs.loadPkcs12(keyStorePkcs12, keyStorePassword.toCharArray()));
-		sslFactory.setKeyStorePassword(keyStorePassword);
-		var ssl = new SslConnectionFactory(sslFactory, alpn.getProtocol());
+		var http3 = new HTTP3ServerConnectionFactory(config);
+		var alpn = new ALPNServerConnectionFactory("h3", "h2", "http/1.1");
+		//alpn.setDefaultProtocol("h3");
+		alpn.setDefaultProtocol("http/1.1");
+//		SslContextFactory.Server sslFactory = new SslContextFactory.Server();
+//		/* Create PKCS12 file: https://gist.github.com/novemberborn/4eb91b0d166c27c2fcd4 */
+//		sslFactory.setKeyStore(Certs.loadPkcs12(keyStorePkcs12, keyStorePassword.toCharArray()));
+		var ssl = new SslConnectionFactory(sslContext, alpn.getProtocol());
 		/* Handlers are found using string lookups in the ConnectionFactory list of the ServerConnector */
-		@SuppressWarnings("all") var httpSecure = new ServerConnector(server, ssl, alpn, http2, http1);
+		@SuppressWarnings("all") var httpSecure = new ServerConnector(server, ssl, alpn, /*http3,*/ http2, http1);
 		setCommonProperties(httpSecure, bind, 443);
 		return httpSecure;
+	}
+	
+	private static Connector http3Connector(Server server, InetAddress bind,
+		HttpConfiguration config, SslContextFactory.Server sslContextFactory) {
+		HTTP3ServerConnectionFactory http3 = new HTTP3ServerConnectionFactory(config);
+		//http3.getHTTP3Configuration().setStreamIdleTimeout(15000);
+		HTTP3ServerConnector connector = new HTTP3ServerConnector(server, sslContextFactory, http3);
+		connector.setPort(443);
+		// Configure the max number of requests per QUIC connection.
+		connector.getQuicConfiguration().setMaxBidirectionalRemoteStreams(1024);
+		connector.getQuicConfiguration().setProtocols(List.of("h3"));
+		connector.setHost(bind.getHostAddress());
+		return connector;
+	}
+	
+	private static SslContextFactory.Server sslContext(KeyStore keyStorePkcs12, String keyStorePassword) {
+		SslContextFactory.Server sslFactory = new SslContextFactory.Server();
+		/* Create PKCS12 file: https://gist.github.com/novemberborn/4eb91b0d166c27c2fcd4 */
+		sslFactory.setKeyStore(keyStorePkcs12);
+		//sslFactory.setKeyStore(Certs.loadPkcs12(keyStorePkcs12, keyStorePassword.toCharArray()));
+		sslFactory.setKeyStorePassword(keyStorePassword);
+		//sslFactory.setKeyStoreResource(new PathResource(keyStorePkcs12));
+		return sslFactory;
 	}
 	
 	private static void setCommonProperties(ServerConnector con, InetAddress bind, int port) {
@@ -172,6 +188,12 @@ public class JettySetup {
 		secureCustomizer.setSniHostCheck(requireSni);
 		httpConfig.addCustomizer(secureCustomizer);
 		
+		httpConfig.addCustomizer((connector, channelConfig, request) -> {
+			if(request.getHttpVersion().getVersion() != HttpVersion.HTTP_3.getVersion()) {
+				request.getResponse().getHttpFields().add(HttpHeader.ALT_SVC, "h3=\":443\"; ma=3600");
+			}
+		});
+		
 		return httpConfig;
 	}
 
@@ -183,14 +205,7 @@ public class JettySetup {
 		@Override
 		public void handle(String target, Request baseRequest, HttpServletRequest request, HttpServletResponse response)
 				throws IOException {
-			try {
-				mainHandler.accept(baseRequest);
-			} catch(Exception e) {
-				if(e instanceof RuntimeException r) {
-					throw r;
-				}
-				throw new IOException(e);
-			}
+			mainHandler.accept(baseRequest);
 		}
 	}
 }

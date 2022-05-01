@@ -6,9 +6,9 @@
     <packaging>jar</packaging>
     
     <properties>
-        <maven.compiler.source>17</maven.compiler.source>
-        <maven.compiler.target>17</maven.compiler.target>
-        <maven.compiler.release>17</maven.compiler.release>
+        <maven.compiler.source>18</maven.compiler.source>
+        <maven.compiler.target>18</maven.compiler.target>
+        <maven.compiler.release>18</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     </properties>
     
@@ -74,7 +74,7 @@
         <dependency>
             <groupId>org.eclipse.jetty</groupId>
             <artifactId>jetty-server</artifactId>
-            <version>11.0.7</version>
+            <version>11.0.9</version>
         </dependency>
         <dependency>
             <groupId>org.eclipse.jetty.toolchain</groupId>
@@ -84,17 +84,22 @@
         <dependency>
             <groupId>org.eclipse.jetty.http2</groupId>
             <artifactId>http2-server</artifactId>
-            <version>11.0.7</version>
+            <version>11.0.9</version>
+        </dependency>
+        <dependency>
+            <groupId>org.eclipse.jetty.http3</groupId>
+            <artifactId>http3-server</artifactId>
+            <version>11.0.9</version>
         </dependency>
         <dependency>
             <groupId>org.eclipse.jetty</groupId>
             <artifactId>jetty-alpn-java-server</artifactId>
-            <version>11.0.7</version>
+            <version>11.0.9</version>
         </dependency>
         <dependency>
             <groupId>org.eclipse.jetty</groupId>
             <artifactId>jetty-jmx</artifactId>
-            <version>11.0.7</version>
+            <version>11.0.9</version>
         </dependency>
         
         <!-- Security -->
@@ -115,7 +120,12 @@
             <artifactId>commonmark</artifactId>
             <version>0.18.0</version>
         </dependency>
-        
+        <!--<dependency>
+            <groupId>org.lz4</groupId>
+            <artifactId>lz4-pure-java</artifactId>
+            <version>1.8.0</version>
+        </dependency>-->
+
         <!-- Database -->
         <dependency>
             <groupId>com.zaxxer</groupId>
@@ -129,12 +139,12 @@
         </dependency>
         
         <!-- Logging -->
-        <dependency>
+        <!--<dependency>
             <groupId>org.slf4j</groupId>
             <artifactId>slf4j-simple</artifactId>
             <version>2.0.0-alpha5</version>
             <scope>runtime</scope>
-        </dependency>
+        </dependency>-->
         <dependency>
             <groupId>org.slf4j</groupId>
             <artifactId>slf4j-jdk-platform-logging</artifactId>
