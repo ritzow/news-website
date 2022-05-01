@@ -15,6 +15,7 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.function.Predicate;
 import java.util.regex.Pattern;
+import net.ritzow.news.response.NamedResourceConsumer;
 import org.eclipse.jetty.http.HttpHeader;
 import org.eclipse.jetty.http.HttpStatus;
 import org.eclipse.jetty.server.Request;
@@ -61,6 +62,10 @@ public class ResponseUtil {
 		response.setContentType(contentType);
 		response.setHeader(HttpHeader.CACHE_CONTROL, "no-store");
 		response.setHeader("Referrer-Policy", "no-referrer");
+	}
+	
+	public static <T> String contentPath(NamedResourceConsumer<T> resource) {
+		return "/content/" + resource.getKey();
 	}
 	
 	private static final Pattern PATH_COMPONENT = Pattern.compile("/");

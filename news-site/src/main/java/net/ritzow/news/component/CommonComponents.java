@@ -5,15 +5,13 @@ import j2html.tags.specialized.BodyTag;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Set;
-import java.util.stream.Collectors;
 import net.ritzow.news.*;
 import net.ritzow.news.page.Login;
 import org.eclipse.jetty.server.Request;
 
 import static j2html.TagCreator.*;
 import static net.ritzow.news.PageTemplate.*;
-import static net.ritzow.news.PageTemplate.head;
+import static net.ritzow.news.ResponseUtil.contentPath;
 
 public class CommonComponents {
 	@RequiresNamedHtml({"full-content", "time", "heap"})
@@ -54,7 +52,7 @@ public class CommonComponents {
 		)
 	);
 	
-	private static final DomContent LOGO_HTML = logo("/content/" + NewsSite.RES_ICON.fileName() /*"/icon.svg"*/);
+	private static final DomContent LOGO_HTML = logo(contentPath(NewsSite.RES_ICON));
 	
 	@RequiresDynamicHtml
 	@RequiresNamedHtml({"content"})
@@ -67,18 +65,35 @@ public class CommonComponents {
 			div().withClass("content-right")
 		)
 	);
+
+	private static final DomContent HEAD_STATICS = freeze(
+		meta().withName("robots").withContent("noindex"),
+		meta().withName("viewport")
+			.withContent("width=device-width,initial-scale=1"),
+		meta().withCharset("utf-8"),
+		meta().withName("referrer").withContent("no-referrer")
+	);
 	
 	@RequiresDynamicHtml
 	public static DomContent page(Request request, NewsSite site, String title, String iconPath,
 			String opensearchPath, String stylePath, Locale locale, DomContent fullContent) {
 		return html().withLang(locale.toLanguageTag()).with(
 			head(
-				request, 
-				title,
-				iconPath,
-				opensearchPath,
-				stylePath,
-				sites(site, request)
+				title(title),
+				link()
+					.withRel("icon")
+					.withHref(iconPath)
+					.withType("image/svg+xml"),
+				link()
+					.withRel("search")
+					.withHref(opensearchPath)
+					.withType("application/opensearchdescription+xml")
+					.withTitle("Ritzow Net"),
+				link().withRel("stylesheet")
+					.withHref(contentPath(NewsSite.RES_FONT_FACE)),
+				link().withRel("stylesheet")
+					.withHref(stylePath),
+				HEAD_STATICS
 			),
 			dynamic(PAGE_BODY_HTML, Map.of(
 				"full-content", fullContent,
@@ -87,11 +102,7 @@ public class CommonComponents {
 			))
 		);
 	}
-	
-	private static Set<String> sites(NewsSite site, Request request) {
-		return site.peers.stream().filter(host -> !host.equals(request.getHttpURI().getHost())).collect(Collectors.toSet());
-	}
-	
+
 	@RequiresDynamicHtml
 	public static DomContent content(DomContent header, DomContent mainContent) {
 		return dynamic(CONTENT_HTML, Map.of("header-content", header, "content", mainContent));

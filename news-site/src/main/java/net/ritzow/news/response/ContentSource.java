@@ -38,19 +38,23 @@ public interface ContentSource {
 		};
 	}
 	
-	static ContentSource ofModuleResource(String path, String mimeType) throws IOException {
+	static ContentSource ofModuleResource(String path, String mimeType) {
 		return new ContentSource() {
 			private final URLConnection holder;
 
 			{
-				this.holder = StackWalker.getInstance(Option.RETAIN_CLASS_REFERENCE)
-					.walk(frames -> frames.skip(1).findFirst().orElseThrow())
-					.getDeclaringClass()
-					//.getClassLoader()
-					.getResource(path)
-					.openConnection();
-				if(!path.startsWith("/")) {
-					throw new IllegalArgumentException("Module resource path must be absolute");
+				try {
+					this.holder = StackWalker.getInstance(Option.RETAIN_CLASS_REFERENCE)
+						.walk(frames -> frames.skip(1).findFirst().orElseThrow())
+						.getDeclaringClass()
+						//.getClassLoader()
+						.getResource(path)
+						.openConnection();
+					if(!path.startsWith("/")) {
+						throw new IllegalArgumentException("Module resource path must be absolute");
+					}
+				} catch(IOException e) {
+					throw new RuntimeException(e);
 				}
 			}
 

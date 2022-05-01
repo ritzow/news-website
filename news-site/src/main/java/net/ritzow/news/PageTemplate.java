@@ -1,6 +1,5 @@
 package net.ritzow.news;
 
-import j2html.TagCreator;
 import j2html.rendering.FlatHtml;
 import j2html.rendering.HtmlBuilder;
 import j2html.tags.DomContent;
@@ -11,7 +10,6 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Set;
 import java.util.stream.Stream;
 import org.eclipse.jetty.server.Request;
 
@@ -136,56 +134,7 @@ public class PageTemplate {
 			span("RedNet!").withClass("logo-text")
 		);
 	}
-	
-	private static final DomContent HEAD_STATICS = freeze(
-		meta().withName("robots").withContent("noindex"),
-		meta().withName("viewport")
-			.withContent("width=device-width,initial-scale=1"),
-		meta().withCharset("utf-8"),
-		meta().withName("referrer").withContent("no-referrer")
-	);
-//		TagCreator.head(
-//		named("title"),
-//		
-//		//TODO this can be used to login to other trusted domains, can send multiple.
-//		//named("session-init")
-	
-	@RequiresDynamicHtml
-	public static DomContent head(Request request, String title, String iconPath, 
-			String opensearchPath, String stylePath, Set<String> peers) {
-		return TagCreator.head(
-			title(title),
-			link()
-				.withRel("icon")
-				.withHref(iconPath)
-				//.withHref("/icon.svg")
-				.withType("image/svg+xml"),
-			link()
-				.withRel("search")
-				.withHref(opensearchPath)
-				//.withHref("/opensearch")
-				.withType("application/opensearchdescription+xml")
-				.withTitle("Ritzow Net"),
-			link().withRel("stylesheet")
-				.withHref("/content/" + NewsSite.RES_FONT_FACE.getKey()), //TODO
-			link().withRel("stylesheet")
-				.withHref(stylePath),
-				//.withHref("/style.css"),
-			HEAD_STATICS
-		);
-//		return dynamic(HEAD_HTML, Map.of(
-//			"title", title(title)
-//			/* TODO disable these if already logged in at peer websites */
-//			/*"session-init", request.getSession(false) != null ? eachStreamed(
-//				peers.stream().map(peer -> link()
-//					.withRel("preload")
-//					.withHref("https://" + peer + "/session?id=" + request.getSession(false).getId())
-//					.attr("as", "fetch")
-//					.attr("crossorigin", "use-credentials"))
-//			) : each()*/
-//		));
-	}
-	
+
 	public static FormTag mainForm() {
 		return form()
 			.withId("main")

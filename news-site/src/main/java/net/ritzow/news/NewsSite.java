@@ -3,12 +3,8 @@ package net.ritzow.news;
 import j2html.tags.DomContent;
 import java.io.IOException;
 import java.net.InetAddress;
-import java.nio.file.Path;
-import java.security.KeyStoreException;
-import java.security.NoSuchAlgorithmException;
-import java.security.cert.CertificateException;
+import java.security.KeyStore;
 import java.sql.SQLException;
-import java.text.MessageFormat;
 import java.text.NumberFormat;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
@@ -53,21 +49,21 @@ public final class NewsSite {
 		return server;
 	}
 	
-	public static final JarContent<NewsSite> 
-		RES_GLOBAL_CSS = JarContent.create("/css/global.css", "text/css"),
-		RES_ICON = JarContent.create("/image/icon.svg", "image/svg+xml"),
-		RES_OPENSEARCH = JarContent.create("/xml/opensearch.xml", "application/opensearchdescription+xml"),
-		RES_FONT = JarContent.create("/font/OpenSans-Regular.ttf", "font/ttf");
+	public static final NamedResourceConsumer<NewsSite> 
+		RES_GLOBAL_CSS = NamedResourceConsumer.ofHashed(ContentSource.ofModuleResource("/css/global.css", "text/css")),
+		RES_ICON = NamedResourceConsumer.ofHashed(ContentSource.ofModuleResource("/image/icon.svg", "image/svg+xml")),
+		RES_OPENSEARCH = NamedResourceConsumer.ofHashed(ContentSource.ofModuleResource("/xml/opensearch.xml", "application/opensearchdescription+xml")),
+		RES_FONT = NamedResourceConsumer.ofHashed(ContentSource.ofModuleResource("/font/OpenSans-Regular.ttf", "font/ttf"));
 	
 	public static final NamedResourceConsumer<NewsSite>
 		RES_FONT_FACE = NamedResourceConsumer.ofHashed(
 			ContentSource.ofString("""
 				@font-face {
 					font-family: "Open Sans";
-					src: url("/content/URLHERE") format("truetype");
+					src: url("URLHERE") format("truetype");
 					font-display: swap;
 				}
-				""".replace("URLHERE", RES_FONT.fileName()),
+				""".replace("URLHERE", contentPath(RES_FONT)),
 				"text/css"
 			)
 		);
@@ -87,11 +83,6 @@ public final class NewsSite {
 				MainPage::mainPageGenerator,
 				NewsSite::doGeneric404,
 				entry("article", ArticlePage::articlePageProcessor),
-//				entry("shutdown", this::shutdownPage),
-//				entry("opensearch", staticContent(
-//					jarResourceOpener("/xml/opensearch.xml"),
-//					"application/opensearchdescription+xml"
-//				)),
 				entry("content", rootNoMatchOrNext(
 					null,
 					NewsSite::doGeneric404,
@@ -101,9 +92,6 @@ public final class NewsSite {
 					RES_FONT,
 					RES_FONT_FACE
 				)),
-				//entry("style.css", staticContent(jarResourceOpener("/css/global.css"), "text/css")),
-//				entry("icon.svg", staticContent(jarResourceOpener("/image/icon.svg"), "image/svg+xml")),
-				//("opensans.ttf", staticContent(jarResourceOpener("/font/OpenSans-Regular.ttf"), "font/ttf")),
 				entry("session", SessionPage::sessionPage)
 			)
 		);
@@ -144,32 +132,6 @@ public final class NewsSite {
 		return HttpUser.bestLocale(request, site.cm.getSupportedLocales());
 	}
 	
-	/*private void shutdownPage(Request request, Iterator<String> path) {
-		doGetHtmlStreamed(request, HttpStatus.OK_200, List.of(),
-			html().with(
-				body().with(
-					p("Shutting down...")
-				)
-			)
-		);
-		
-		request.getResponse().getHttpOutput().complete(new Callback() {
-			@Override
-			public void succeeded() {
-				try {
-					server.stop();
-				} catch(Exception e) {
-					throw new RuntimeException(e);
-				}
-			}
-			
-			@Override
-			public void failed(Throwable x) {
-				x.printStackTrace();
-			}
-		});
-	}*/
-	
 	public static void storeLocale(Request request, NewsSite site, String languageTag) {
 		Locale selected = Locale.forLanguageTag(languageTag);
 		Optional<Locale> existing = site.cm.getSupportedLocales().stream().filter(selected::equals).findAny();
@@ -180,9 +142,9 @@ public final class NewsSite {
 		doGetHtmlStreamed(request, status, List.of(mainLocale),
 			context(request, site.translator, Map.of(),
 				CommonComponents.page(request, site, title, 
-					"/content/" + RES_ICON.fileName(),
-					"/content/" + RES_OPENSEARCH.fileName(),
-					"/content/" + RES_GLOBAL_CSS.fileName(),
+					contentPath(RES_ICON),
+					contentPath(RES_OPENSEARCH),
+					contentPath(RES_GLOBAL_CSS),
 					mainLocale,
 					CommonComponents.content(
 						CommonComponents.header(request, site),

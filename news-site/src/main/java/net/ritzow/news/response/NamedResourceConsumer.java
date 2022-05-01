@@ -8,6 +8,7 @@ public interface NamedResourceConsumer<T> extends Entry<String, ContextRequestCo
 	static <U> NamedResourceConsumer<U> ofHashed(ContentSource src) {
 		return new NamedResourceConsumer<U>() {
 			private final ContextRequestConsumer<U> handler;
+			private String name;
 
 			{
 				handler = new CachingImmutableRequestConsumer<>(src);
@@ -15,7 +16,7 @@ public interface NamedResourceConsumer<T> extends Entry<String, ContextRequestCo
 			
 			@Override
 			public String getKey() {
-				return ResourceUtil.bytesToString(src.hash());
+				return name == null ? name = ResourceUtil.bytesToString(src.hash()) : name;
 			}
 
 			@Override
