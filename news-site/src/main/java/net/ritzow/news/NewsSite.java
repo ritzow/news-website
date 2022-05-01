@@ -42,7 +42,7 @@ public final class NewsSite {
 	public final Translator<String> translator;
 	public final Set<String> peers;
 	
-	public static NewsSite start(boolean requireSni, Path keyStore, String keyStorePassword, 
+	public static NewsSite start(boolean requireSni, KeyStore keyStore, String keyStorePassword, 
 			Set<String> peers, InetAddress... bind) throws Exception {
 		var server = new NewsSite(requireSni, keyStore, keyStorePassword, peers, bind);
 		server.server.start();
@@ -68,12 +68,8 @@ public final class NewsSite {
 			)
 		);
 	
-	private NewsSite(boolean requireSni, Path keyStore, String keyStorePassword, Set<String> peers, InetAddress... bind) throws
-			CertificateException,
-			IOException,
-			KeyStoreException,
-			NoSuchAlgorithmException,
-			SQLException {
+	private NewsSite(boolean requireSni, KeyStore keyStore, String keyStorePassword, Set<String> peers, InetAddress... bind) throws
+		SQLException {
 		cm = ContentManager.ofMemoryDatabase();
 		ContentUtil.genArticles(cm);
 		translator = Translator.ofProperties(properties("/lang/welcome.properties"));
