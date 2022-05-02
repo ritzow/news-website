@@ -1,7 +1,6 @@
 package net.ritzow.news;
 
 import java.io.IOException;
-import java.io.OutputStream;
 import java.math.BigInteger;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -17,21 +16,23 @@ import java.sql.Time;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Set;
-import org.bouncycastle.asn1.ASN1ObjectIdentifier;
 import org.bouncycastle.asn1.DERIA5String;
 import org.bouncycastle.asn1.DERUTF8String;
+import org.bouncycastle.asn1.pkcs.PKCSObjectIdentifiers;
 import org.bouncycastle.asn1.x500.RDN;
 import org.bouncycastle.asn1.x500.X500Name;
 import org.bouncycastle.asn1.x509.*;
 import org.bouncycastle.cert.X509v3CertificateBuilder;
 import org.bouncycastle.cert.jcajce.JcaX509CertificateConverter;
-import org.bouncycastle.crypto.io.SignerOutputStream;
-import org.bouncycastle.crypto.params.Ed25519PrivateKeyParameters;
-import org.bouncycastle.crypto.signers.Ed25519Signer;
+import org.bouncycastle.crypto.generators.RSAKeyPairGenerator;
+import org.bouncycastle.crypto.params.RSAKeyGenerationParameters;
 import org.bouncycastle.crypto.util.PrivateKeyInfoFactory;
 import org.bouncycastle.crypto.util.SubjectPublicKeyInfoFactory;
+import org.bouncycastle.jcajce.provider.asymmetric.util.PrimeCertaintyCalculator;
 import org.bouncycastle.openssl.jcajce.JcaPEMKeyConverter;
-import org.bouncycastle.operator.ContentSigner;
+import org.bouncycastle.operator.DefaultDigestAlgorithmIdentifierFinder;
+import org.bouncycastle.operator.OperatorCreationException;
+import org.bouncycastle.operator.bc.BcRSAContentSignerBuilder;
 import org.bouncycastle.util.io.pem.PemObject;
 import org.bouncycastle.util.io.pem.PemWriter;
 import org.slf4j.LoggerFactory;
@@ -48,38 +49,24 @@ public class Certs {
 		return ks;
 	}
 	
-	public static KeyStore selfSigned(String host, char[] password) throws IOException {
+	public static KeyStore selfSigned(String host, String org, char[] password) throws IOException {
 		try {
-			var privateKey = new Ed25519PrivateKeyParameters(SecureRandom.getInstanceStrong());
-			var publicKey = privateKey.generatePublicKey();
+			var gen = new RSAKeyPairGenerator();
+			gen.init(new RSAKeyGenerationParameters(
+				BigInteger.valueOf(0x10001), 
+				SecureRandom.getInstanceStrong(), 
+				4096, PrimeCertaintyCalculator.getDefaultCertainty(4096)));
+			var pair = gen.generateKeyPair();
+			var privateKey = pair.getPrivate();
+			var publicKey = pair.getPublic();
 
-			var issuer = new X500Name(new RDN[] {segment("C", "US"), segment("O", "Solomon Ritzow")});
-			var subject = new X500Name(new RDN[] {segment("CN", host)});
+			//TODO make subject match issuer (self-signed)
+			var issuer = new X500Name(new RDN[] {segment("C", "US"), segment("O", org)});
 			
-			var signer = new ContentSigner() {
-				private final Ed25519Signer signer;
-
-				{
-					this.signer = new Ed25519Signer();
-					signer.init(true, privateKey);
-				}
-				
-				@Override
-				public AlgorithmIdentifier getAlgorithmIdentifier() {
-					/* Defined in https://www.rfc-editor.org/rfc/rfc8419.html#page-2, same as OID */
-					return new AlgorithmIdentifier(new ASN1ObjectIdentifier("1.3.101.112"));
-				}
-
-				@Override
-				public OutputStream getOutputStream() {
-					return new SignerOutputStream(signer);
-				}
-
-				@Override
-				public byte[] getSignature() {
-					return signer.generateSignature();
-				}
-			};
+			var sigAlgId = new AlgorithmIdentifier(PKCSObjectIdentifiers.sha256WithRSAEncryption);
+			var signer = new BcRSAContentSignerBuilder(sigAlgId, 
+				new AlgorithmIdentifier(new DefaultDigestAlgorithmIdentifierFinder().find(sigAlgId).getAlgorithm()))
+				.build(privateKey);
 			
 			var now = Instant.now();
 				
@@ -88,7 +75,7 @@ public class Certs {
 				BigInteger.valueOf(Instant.now().toEpochMilli()),
 				Time.from(now),
 				Time.from(now.plus(Duration.ofHours(1))),
-				subject,
+				issuer,
 				SubjectPublicKeyInfoFactory.createSubjectPublicKeyInfo(publicKey)
 			)
 				.addExtension(Extension.basicConstraints, true, new BasicConstraints(false))
@@ -97,11 +84,6 @@ public class Certs {
 				.addExtension(Extension.keyUsage, true, new KeyUsage(KeyUsage.digitalSignature))
 				.addExtension(Extension.extendedKeyUsage, false, new ExtendedKeyUsage(KeyPurposeId.id_kp_serverAuth))
 				.build(signer);
-
-			/*LoggerFactory.getLogger(Certs.class).atInfo().log("Writing PEM file");
-			try(var writer = new PemWriter(Files.newBufferedWriter(Path.of("certtest.pem")))) {
-				writer.writeObject(new PemObject("CERTIFICATE", cert.getEncoded()));
-			}*/
 			
 			var certChain = new Certificate[] {new JcaX509CertificateConverter().getCertificate(cert)};
 			
@@ -116,10 +98,7 @@ public class Certs {
 				certChain, Set.of()), new PasswordProtection(password));
 			
 			return keyStore;
-		} catch(
-			NoSuchAlgorithmException |
-			KeyStoreException |
-			CertificateException e) {
+		} catch(NoSuchAlgorithmException | KeyStoreException | CertificateException | OperatorCreationException e) {
 			throw new IOException(e);
 		}
 	}
