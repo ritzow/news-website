@@ -3,7 +3,7 @@ module net.ritzow.news {
 	requires org.eclipse.jetty.http2.server;
 	requires org.eclipse.jetty.http3.server;
 	requires org.eclipse.jetty.alpn.server;
-	requires org.eclipse.jetty.jmx;
+	/*requires org.eclipse.jetty.jmx;*/
 	requires org.bouncycastle.pkix;
 	requires org.bouncycastle.util;
 	requires org.bouncycastle.provider;
@@ -11,5 +11,5 @@ module net.ritzow.news {
 	requires org.commonmark;
 	requires java.sql;
 	requires com.zaxxer.hikari;
-	requires java.management;
+	/*requires java.management;*/
 }

@@ -5,7 +5,6 @@ import jakarta.servlet.SessionTrackingMode;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
-import java.lang.management.ManagementFactory;
 import java.net.InetAddress;
 import java.security.KeyStore;
 import java.util.EnumSet;
@@ -16,7 +15,6 @@ import org.eclipse.jetty.http.HttpCookie.SameSite;
 import org.eclipse.jetty.http2.server.HTTP2ServerConnectionFactory;
 import org.eclipse.jetty.http3.server.HTTP3ServerConnectionFactory;
 import org.eclipse.jetty.http3.server.HTTP3ServerConnector;
-import org.eclipse.jetty.jmx.MBeanContainer;
 import org.eclipse.jetty.server.*;
 import org.eclipse.jetty.server.handler.*;
 import org.eclipse.jetty.server.handler.gzip.GzipHandler;
@@ -71,7 +69,7 @@ public class JettySetup {
 		server.setErrorHandler(onError);
 		server.setHandler(setupHandlers(server, new SuperHandler(mainHandler)));
 		server.setStopAtShutdown(true);
-		server.addBean(new MBeanContainer(ManagementFactory.getPlatformMBeanServer()));
+		/*server.addBean(new MBeanContainer(ManagementFactory.getPlatformMBeanServer()));*/
 		return server;
 	}
 	
