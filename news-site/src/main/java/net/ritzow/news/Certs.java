@@ -33,9 +33,6 @@ import org.bouncycastle.openssl.jcajce.JcaPEMKeyConverter;
 import org.bouncycastle.operator.DefaultDigestAlgorithmIdentifierFinder;
 import org.bouncycastle.operator.OperatorCreationException;
 import org.bouncycastle.operator.bc.BcRSAContentSignerBuilder;
-import org.bouncycastle.util.io.pem.PemObject;
-import org.bouncycastle.util.io.pem.PemWriter;
-import org.slf4j.LoggerFactory;
 
 public class Certs {
 	public static KeyStore loadPkcs12(Path p12, char[] password) 
@@ -51,11 +48,12 @@ public class Certs {
 	
 	public static KeyStore selfSigned(String host, String org, char[] password) throws IOException {
 		try {
+			int keySize = 2048;
 			var gen = new RSAKeyPairGenerator();
 			gen.init(new RSAKeyGenerationParameters(
 				BigInteger.valueOf(0x10001), 
 				SecureRandom.getInstanceStrong(), 
-				4096, PrimeCertaintyCalculator.getDefaultCertainty(4096)));
+				keySize, PrimeCertaintyCalculator.getDefaultCertainty(keySize)));
 			var pair = gen.generateKeyPair();
 			var privateKey = pair.getPrivate();
 			var publicKey = pair.getPublic();
