@@ -17,6 +17,7 @@ import org.eclipse.jetty.server.Response;
 
 import static net.ritzow.news.ResponseUtil.skipInput;
 
+@SuppressWarnings("unused")
 class StaticContentHandler<T> implements ContextRequestConsumer<T> {
 	private final String contentType;
 	private final Supplier<InputStream> resource;
