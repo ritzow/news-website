@@ -79,6 +79,7 @@ public class ResponseUtil {
 	}
 	
 	private static void doSeeOther(Request request, URI location) {
+		request.getHttpInput().consumeAll();
 		request.getResponse().setHeader(HttpHeader.LOCATION, location.toString());
 		request.getResponse().setStatus(HttpStatus.SEE_OTHER_303);
 		request.setHandled(true);
