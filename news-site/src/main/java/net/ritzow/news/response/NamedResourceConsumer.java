@@ -1,5 +1,6 @@
 package net.ritzow.news.response;
 
+import java.time.Duration;
 import java.util.Map.Entry;
 import net.ritzow.news.ResourceUtil;
 import net.ritzow.news.ResponseUtil.ContextRequestConsumer;
@@ -11,7 +12,7 @@ public interface NamedResourceConsumer<T> extends Entry<String, ContextRequestCo
 			private String name;
 
 			{
-				handler = new CachingImmutableRequestConsumer<>(src);
+				handler = new CachingImmutableRequestConsumer<>(src, Duration.ofDays(7));
 			}
 			
 			@Override

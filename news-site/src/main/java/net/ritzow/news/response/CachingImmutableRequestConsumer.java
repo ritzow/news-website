@@ -13,10 +13,12 @@ import org.eclipse.jetty.server.Request;
 public class CachingImmutableRequestConsumer<T> implements ContextRequestConsumer<T> {
 	private final ContentSource src;
 	private SoftReference<byte[]> data;
+	private final Duration cacheFor;
 
-	public CachingImmutableRequestConsumer(ContentSource src) {
+	public CachingImmutableRequestConsumer(ContentSource src, Duration cacheDuration) {
 		this.src = src;
 		this.data = new SoftReference<>(null);
+		this.cacheFor = cacheDuration;
 	}
 
 	public byte[] load() throws IOException {
@@ -38,7 +40,7 @@ public class CachingImmutableRequestConsumer<T> implements ContextRequestConsume
 		byte[] bytes = load();
 
 		response.getHttpFields().addCSV(HttpHeader.CACHE_CONTROL,
-			"max-age=" + Duration.ofDays(7).toSeconds(),
+			"max-age=" + cacheFor.toSeconds(),
 			"public",
 			"immutable"//,
 			//TODO this isn't used here (since we're immutable), but it could maybe be used somewhere else
