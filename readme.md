@@ -1,31 +1,33 @@
 # Article Hosting Website
 
-Embedded Jetty server using HTML generation and a (currently in-memory) database for article storage as Markdown.
+A website that stores and displays "articles" to the user.
 
 ## Project Structure
 
-[`/news-site`](news-site) contains all source code and assets.
+[`/news-site`](news-site) contains all website source code and assets.
+
+[`/runner`](runner) contains a Maven plugin for running modular Java applications.
 
 ## Software Used
 
-### [Gradle](https://docs.gradle.org/7.3.1/userguide/userguide.html)
+### [Maven](https://maven.apache.org/)
 
-For building, testing, and r**u**nning. Follows standard build system structure. The build script requires a Java .properties file `/news-site/project.properties` with the following properties:
+For building, testing, and running. Follows standard build system structure. The build script requires a Java .properties file `/news-site/project.properties` with the following properties:
 
 ```properties
-# Absolute path to a Java-supported keystore, i.e. a .p12 file
-keystore.file = <path>
-# Keystore password
-keystore.password = <password>
-# Absolute path to SASS executable
-sass.path = <path>
-# Absolute path to Inkscape executable
-inkscape.path = <path>
+# Optional path to a PKCS #12 file
+keystore = <path>
+# Keystore password (used as password for self-signed cert if keystore is absent)
+keystorePassword = <password>
+# Human-readable organization name for self-signed cert
+organization = <name>
+#DNS name for the server used by self-signed cert, TLS, and other functionality
+hostname = <domain>
 ```
 
 ### [Jetty Embedded HTTP Server](https://www.eclipse.org/jetty/documentation/jetty-11/programming-guide/index.html)
 
-For HTTP 1.1/2 web server functionality
+For HTTP 1.1/2/3 web server functionality and utilities
 
 ### [j2html](https://j2html.com/)
 
@@ -42,14 +44,6 @@ For proper database functionality in application threads started by Jetty.
 ### [commonmark-java](https://github.com/commonmark/commonmark-java)
 
 For parsing article Markdown and converting it to HTML.
-
-### [JUnit](https://junit.org/junit5/docs/current/user-guide/)
-
-For testing (not implemented).
-
-### [Jetty Load Generator](https://github.com/jetty-project/jetty-load-generator)
-
-For testing (not implemented, need to work around certificate issues for testing).
 
 ### [SLF4J](http://www.slf4j.org/)
 
