@@ -14,7 +14,6 @@ import static net.ritzow.news.PageTemplate.*;
 import static net.ritzow.news.ResponseUtil.contentPath;
 
 public class CommonComponents {
-	@RequiresNamedHtml({"full-content", "time", "heap"})
 	private static final BodyTag PAGE_BODY_HTML = body().withId("top").with(
 		named("full-content"),
 		div().withClass("page-separator"),
@@ -31,8 +30,6 @@ public class CommonComponents {
 		)
 	);
 	/* HTML should use "named" content when a lage chunk of HTML has a small number of dynamic elements */
-	@RequiresDynamicHtml
-	@RequiresNamedHtml({"header-content", "content"})
 	private static final DomContent CONTENT_HTML = each(
 		nav().withClasses("header", "foreground").with(named("header-content")),
 		div().withClasses("page-body").with(
@@ -54,8 +51,6 @@ public class CommonComponents {
 	
 	private static final DomContent LOGO_HTML = logo(contentPath(NewsSite.RES_ICON));
 	
-	@RequiresDynamicHtml
-	@RequiresNamedHtml({"content"})
 	private static final DomContent STATIC_CENTERED_CONTENT = each(
 		div().withClasses("page-body", "headerless-content").with(
 			div().withClass("content-left"),
@@ -74,8 +69,7 @@ public class CommonComponents {
 		meta().withName("referrer").withContent("no-referrer")
 	);
 	
-	@RequiresDynamicHtml
-	public static DomContent page(Request request, NewsSite site, String title, String iconPath,
+	public static DomContent page(String title, String iconPath,
 			String opensearchPath, String stylePath, Locale locale, DomContent fullContent) {
 		return html().withLang(locale.toLanguageTag()).with(
 			head(
@@ -103,7 +97,6 @@ public class CommonComponents {
 		);
 	}
 
-	@RequiresDynamicHtml
 	public static DomContent content(DomContent header, DomContent mainContent) {
 		return dynamic(CONTENT_HTML, Map.of("header-content", header, "content", mainContent));
 	}

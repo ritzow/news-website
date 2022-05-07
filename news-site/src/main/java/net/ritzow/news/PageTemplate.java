@@ -53,7 +53,6 @@ public class PageTemplate {
 	}
 	
 	//TODO improve efficiency
-	@RequiresDynamicHtml
 	public static DomContent dynamic(DomContent content, Map<String, DomContent> template) {
 		return new DomContent() {
 			@Override

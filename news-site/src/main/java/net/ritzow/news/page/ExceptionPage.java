@@ -22,7 +22,7 @@ public class ExceptionPage {
 		Optional.ofNullable(request.getSession(false)).ifPresent(HttpSession::invalidate);
 		doGetHtmlStreamed(request, HttpStatus.INTERNAL_SERVER_ERROR_500, List.of(),
 			context(request, site.translator, Map.of(),
-				CommonComponents.page(request, site, "Error", 
+				CommonComponents.page("Error", 
 					contentPath(NewsSite.RES_ICON),
 					contentPath(NewsSite.RES_OPENSEARCH),
 					contentPath(NewsSite.RES_GLOBAL_CSS),

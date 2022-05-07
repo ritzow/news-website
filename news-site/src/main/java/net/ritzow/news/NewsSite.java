@@ -137,7 +137,7 @@ public final class NewsSite {
 	public static void doDecoratedPage(int status, Request request, NewsSite site, Locale mainLocale, String title, DomContent body) {
 		doGetHtmlStreamed(request, status, List.of(mainLocale),
 			context(request, site.translator, Map.of(),
-				CommonComponents.page(request, site, title, 
+				CommonComponents.page(title, 
 					contentPath(RES_ICON),
 					contentPath(RES_OPENSEARCH),
 					contentPath(RES_GLOBAL_CSS),
