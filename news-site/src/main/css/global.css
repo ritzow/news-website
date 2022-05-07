@@ -26,6 +26,9 @@
 
 	/* When jumping to anchors, scroll smoothly */
 	scroll-behavior: smooth;
+	
+	/* Not necessary with proper html head value, but just in case */
+	touch-action: manipulation;
 }
 
 body {
