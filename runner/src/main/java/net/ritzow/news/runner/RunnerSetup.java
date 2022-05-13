@@ -10,13 +10,11 @@ import java.util.Properties;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import org.apache.maven.artifact.Artifact;
-import org.apache.maven.execution.MavenSession;
+import org.apache.maven.project.MavenProject;
 
 public class RunnerSetup {
 	
-	public static File mainJar(MavenSession session) {
-		var proj = session.getCurrentProject();
-
+	public static File mainJar(MavenProject proj) {
 		var file = proj.getArtifact().getFile();
 
 		if(file == null) {
@@ -30,8 +28,8 @@ public class RunnerSetup {
 		return file;
 	}
 	
-	public static Stream<File> libraries(MavenSession session) {
-		return session.getCurrentProject().getArtifacts()
+	public static Stream<File> libraries(MavenProject project) {
+		return project.getArtifacts()
 			.stream()
 			.filter(artifact -> artifact.getType().equals("jar"))
 			.map(Artifact::getFile);

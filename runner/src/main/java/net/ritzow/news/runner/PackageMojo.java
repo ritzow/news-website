@@ -14,6 +14,7 @@ import org.apache.maven.plugins.annotations.LifecyclePhase;
 import org.apache.maven.plugins.annotations.Mojo;
 import org.apache.maven.plugins.annotations.Parameter;
 import org.apache.maven.plugins.annotations.ResolutionScope;
+import org.apache.maven.project.MavenProject;
 
 @SuppressWarnings("unused")
 @Mojo(
@@ -34,11 +35,15 @@ public class PackageMojo extends AbstractMojo {
 	@Override
 	public void execute() {
 		try {
-			Path bundleDir = Path.of(session.getCurrentProject()
+			MavenProject project = session.getCurrentProject();
+			Path bundleDir = Path.of(project
 				.getBuild().getDirectory(), "bundle");
 			
-			var mainJar = RunnerSetup.mainJar(session).toPath().toAbsolutePath();
-			var libs = RunnerSetup.libraries(session);
+			var mainJar = session.getCurrentProject()
+				.getArtifact()
+				.getFile()
+				.toPath(); //RunnerSetup.mainJar(project).toPath().toAbsolutePath();
+			var libs = RunnerSetup.libraries(project);
 			
 			Files.createDirectories(bundleDir);
 			

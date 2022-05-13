@@ -4,15 +4,16 @@ import java.io.File;
 import java.io.IOException;
 import org.apache.maven.execution.MavenSession;
 import org.apache.maven.plugin.AbstractMojo;
-import org.apache.maven.plugin.MojoFailureException;
 import org.apache.maven.plugins.annotations.*;
+import org.apache.maven.project.MavenProject;
 
 @SuppressWarnings("unused")
-@Execute(phase = LifecyclePhase.PACKAGE)
+@Execute(lifecycle = "default", phase = LifecyclePhase.PACKAGE)
 @Mojo(
 	name = "run", 
 	defaultPhase = LifecyclePhase.NONE, 
-	requiresDependencyResolution = ResolutionScope.RUNTIME
+	requiresDependencyResolution = ResolutionScope.RUNTIME,
+	threadSafe = true
 )
 public class Runner extends AbstractMojo {
 	
@@ -25,29 +26,39 @@ public class Runner extends AbstractMojo {
 	private File jvmProps;
 	
 	@Override
-	public void execute() throws MojoFailureException {
+	public void execute() {
+		var project = session.getCurrentProject();
+		if(project.getPackaging().equals("jar")) {
+			executeProject(project);
+		} else {
+			getLog().info("Skipping project " 
+				+ project.getId() + " with packaging \"" 
+				+ project.getPackaging() + "\" (must be \"jar\")");
+		}
+	}
+	
+	private void executeProject(MavenProject project) {
 		try {
-			
-			var mainJar = RunnerSetup.mainJar(session);
-			
+			var mainJar = RunnerSetup.mainJar(project);
 			var args = RunnerSetup.args(
 				ProcessHandle.current().info().command().orElseThrow(),
 				RunnerSetup.mainModuleName(mainJar.toPath()),
-				RunnerSetup.exactModulePathString(mainJar, RunnerSetup.libraries(session)),
+				RunnerSetup.exactModulePathString(mainJar, RunnerSetup.libraries(project)),
 				jvmProps
 			).toList();
 
+			getLog().info("Running project " + project.getId());
 			getLog().info(String.join(" ", args));
 
 			var process = new ProcessBuilder(args)
 				.inheritIO()
 				.start();
 
-			getLog().info("Maven will "
-				+ (process.supportsNormalTermination() ? "forcibly" : "normally")
-				+ " terminate the program when stopped."
+			getLog().info("Maven will terminate the program " 
+				+ (process.supportsNormalTermination() ? "forcibly" : "normally") 
+				+ " when stopped."
 			);
-			
+
 			Runtime.getRuntime().addShutdownHook(new Thread(() -> {
 				getLog().info("Shutting down " + process.info()
 					.commandLine()
@@ -59,11 +70,11 @@ public class Runner extends AbstractMojo {
 					e.printStackTrace();
 				}
 			}));
-			
+
 			process.waitFor();
-			
+
 		} catch(IOException | InterruptedException e) {
-			throw new MojoFailureException(e);
+			getLog().error(e);
 		}
 	}
 }
