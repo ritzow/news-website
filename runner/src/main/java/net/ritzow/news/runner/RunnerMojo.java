@@ -4,6 +4,7 @@ import java.io.File;
 import java.io.IOException;
 import org.apache.maven.execution.MavenSession;
 import org.apache.maven.plugin.AbstractMojo;
+import org.apache.maven.plugin.MojoFailureException;
 import org.apache.maven.plugins.annotations.*;
 import org.apache.maven.project.MavenProject;
 
@@ -26,7 +27,7 @@ public class RunnerMojo extends AbstractMojo {
 	private File jvmProps;
 	
 	@Override
-	public void execute() {
+	public void execute() throws MojoFailureException {
 		var project = session.getCurrentProject();
 		if(project.getPackaging().equals("jar")) {
 			executeProject(project);
@@ -37,7 +38,7 @@ public class RunnerMojo extends AbstractMojo {
 		}
 	}
 	
-	private void executeProject(MavenProject project) {
+	private void executeProject(MavenProject project) throws MojoFailureException {
 		try {
 			var mainJar = RunnerSetup.mainJar(project);
 			var args = RunnerSetup.args(
@@ -71,7 +72,11 @@ public class RunnerMojo extends AbstractMojo {
 				}
 			}));
 
-			process.waitFor();
+			int status = process.waitFor();
+
+			if(status != 0) {
+				throw new MojoFailureException("Program exited with return status " + status);
+			}
 
 		} catch(IOException | InterruptedException e) {
 			getLog().error(e);
