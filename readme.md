@@ -6,7 +6,7 @@ A website that stores and displays "articles" to the user.
 
 [`/news-site`](news-site) contains all website source code and assets.
 
-[`/runner`](runner) contains a Maven plugin for running modular Java applications.
+[`/runner`](runner) contains a Maven plugin for running modular Java applications, designed to run the news-site.
 
 ## Software Used
 
@@ -25,9 +25,15 @@ organization = <name>
 hostname = <domain>
 ```
 
+To automatically build and run the server using Maven, in the root directory of the project run
+
+```sh
+mvn net.ritzow:runner:1.4-SNAPSHOT:run
+```
+
 ### [Jetty Embedded HTTP Server](https://www.eclipse.org/jetty/documentation/jetty-11/programming-guide/index.html)
 
-For HTTP 1.1/2/3 web server functionality and utilities
+For HTTP 1.1/2/3 web server functionality and utilities.
 
 ### [j2html](https://j2html.com/)
 
@@ -35,7 +41,7 @@ For dynamically generating all HTML served.
 
 ### [HyperSQL (HSQLDB)](http://hsqldb.org/)
 
-For article storage.
+For article storage (currently in-memory).
 
 ### [Hikari Connection Pool](https://github.com/brettwooldridge/HikariCP)
 
