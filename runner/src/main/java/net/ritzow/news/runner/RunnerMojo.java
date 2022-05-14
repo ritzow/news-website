@@ -15,7 +15,7 @@ import org.apache.maven.project.MavenProject;
 	requiresDependencyResolution = ResolutionScope.RUNTIME,
 	threadSafe = true
 )
-public class Runner extends AbstractMojo {
+public class RunnerMojo extends AbstractMojo {
 	
 	@SuppressWarnings("unused")
 	@Parameter(defaultValue = "${session}", readonly = true, required = true)
