@@ -8,7 +8,7 @@ import org.apache.maven.plugins.annotations.*;
 import org.apache.maven.project.MavenProject;
 
 @SuppressWarnings("unused")
-@Execute(lifecycle = "default", phase = LifecyclePhase.PACKAGE)
+@Execute(phase = LifecyclePhase.PACKAGE)
 @Mojo(
 	name = "run", 
 	defaultPhase = LifecyclePhase.NONE, 
