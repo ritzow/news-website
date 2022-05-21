@@ -2,6 +2,7 @@ package net.ritzow.news.runner;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.Scanner;
 import org.apache.maven.execution.MavenSession;
 import org.apache.maven.plugin.AbstractMojo;
 import org.apache.maven.plugin.MojoFailureException;
@@ -18,11 +19,9 @@ import org.apache.maven.project.MavenProject;
 )
 public class RunnerMojo extends AbstractMojo {
 	
-	@SuppressWarnings("unused")
 	@Parameter(defaultValue = "${session}", readonly = true, required = true)
 	private MavenSession session;
 	
-	@SuppressWarnings("unused")
 	@Parameter(name = "jvmProps")
 	private File jvmProps;
 	
@@ -51,25 +50,39 @@ public class RunnerMojo extends AbstractMojo {
 			getLog().info("Running project " + project.getId());
 			getLog().info(String.join(" ", args));
 
-			var process = new ProcessBuilder(args)
-				.inheritIO()
-				.start();
+			var process = new ProcessBuilder(args).start();
 
-			getLog().info("Maven will terminate the program " 
-				+ (process.supportsNormalTermination() ? "forcibly" : "normally") 
+			getLog().info("Maven will terminate the program "
+				+ (process.supportsNormalTermination() ? "forcibly" : "normally")
 				+ " when stopped."
 			);
+			
+			new Thread(() -> {
+				try(var scan = new Scanner(process.getInputStream())) {
+					while(scan.hasNextLine()) {
+						getLog().info(scan.nextLine());
+					}
+				}
+			}).start();
+
+			new Thread(() -> {
+				try(var scan = new Scanner(process.getErrorStream())) {
+					while(scan.hasNextLine()) {
+						getLog().warn(scan.nextLine());
+					}
+				}
+			}).start();
 
 			Runtime.getRuntime().addShutdownHook(new Thread(() -> {
 				getLog().info("Shutting down " + process.info()
 					.commandLine()
 					.orElseGet(() -> "PID " + process.pid()));
 				process.destroy();
-				try {
-					process.waitFor();
-				} catch(InterruptedException e) {
-					e.printStackTrace();
-				}
+//				try {
+//					process.waitFor();
+//				} catch(InterruptedException e) {
+//					e.printStackTrace();
+//				}
 			}));
 
 			int status = process.waitFor();
@@ -77,7 +90,6 @@ public class RunnerMojo extends AbstractMojo {
 			if(status != 0) {
 				throw new MojoFailureException("Program exited with return status " + status);
 			}
-
 		} catch(IOException | InterruptedException e) {
 			getLog().error(e);
 		}
