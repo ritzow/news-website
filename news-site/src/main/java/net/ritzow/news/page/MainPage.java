@@ -1,7 +1,6 @@
 package net.ritzow.news.page;
 
 import j2html.tags.DomContent;
-import java.util.Collections;
 import java.util.Iterator;
 import java.util.Locale;
 import net.ritzow.news.Forms;
@@ -14,7 +13,6 @@ import org.eclipse.jetty.http.HttpStatus;
 import org.eclipse.jetty.server.Request;
 
 import static j2html.TagCreator.*;
-import static j2html.TagCreator.h1;
 import static java.util.Map.entry;
 import static net.ritzow.news.Forms.doFormResponse;
 import static net.ritzow.news.PageTemplate.*;
@@ -27,11 +25,7 @@ public class MainPage {
 		FormField.required("login-action", Forms::stringReader)
 	);
 	
-	public static void mainPageGenerator(Request request, NewsSite site) {
-		mainPageGenerator(request, site, Collections.emptyIterator());
-	}
-	
-	private static void mainPageGenerator(Request request, NewsSite site, Iterator<String> path) {
+	public static void mainPageGenerator(Request request, NewsSite site, Iterator<String> path) {
 		switch(HttpMethod.fromString(request.getMethod())) {
 			case GET, HEAD -> {
 				if(path.hasNext()) {

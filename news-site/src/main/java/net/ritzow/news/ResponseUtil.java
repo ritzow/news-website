@@ -8,10 +8,7 @@ import java.io.UncheckedIOException;
 import java.io.Writer;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
+import java.util.*;
 import java.util.Map.Entry;
 import java.util.function.Predicate;
 import java.util.regex.Pattern;
@@ -107,14 +104,14 @@ public class ResponseUtil {
 	}
 	
 	@SafeVarargs
-	public static <S> ContextRequestConsumer<S> rootNoMatchOrNext(RequestConsumer<S> root,
+	public static <S> ContextRequestConsumer<S> rootNoMatchOrNext(ContextRequestConsumer<S> root,
 			ContextRequestConsumer<S> noMatch, Entry<String, ContextRequestConsumer<S>>... paths) {
 		var map = Map.ofEntries(paths);
 		return (request, data, it) -> {
 			if(it.hasNext()) {
 				map.getOrDefault(it.next(), noMatch).accept(request, data, it);
 			} else {
-				root.accept(request, data);
+				root.accept(request, data, Collections.emptyIterator());
 			}
 		};
 	}

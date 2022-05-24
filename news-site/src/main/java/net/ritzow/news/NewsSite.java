@@ -80,8 +80,9 @@ public final class NewsSite {
 				NewsSite::doGeneric404,
 				entry("article", ArticlePage::articlePageProcessor),
 				entry("content", rootNoMatchOrNext(
-					null,
 					NewsSite::doGeneric404,
+					NewsSite::doGeneric404,
+					/* Content hashes */
 					RES_ICON,
 					RES_GLOBAL_CSS,
 					RES_OPENSEARCH,
