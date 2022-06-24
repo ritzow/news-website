@@ -9,6 +9,7 @@ import java.net.InetAddress;
 import java.security.KeyStore;
 import java.util.EnumSet;
 import java.util.List;
+import javax.net.ssl.SSLContext;
 import org.eclipse.jetty.alpn.server.ALPNServerConnectionFactory;
 import org.eclipse.jetty.http.*;
 import org.eclipse.jetty.http.HttpCookie.SameSite;
@@ -124,13 +125,11 @@ public class JettySetup {
 	private static ServerConnector httpSslConnector(Server server, InetAddress bind, HttpConfiguration config, SslContextFactory.Server sslContext) {
 		var http1 = new HttpConnectionFactory(new HttpConfiguration(config));
 		var http2 = new HTTP2ServerConnectionFactory(new HttpConfiguration(config));
-		var http3 = new HTTP3ServerConnectionFactory(config);
+		//var http3 = new HTTP3ServerConnectionFactory(config);
 		var alpn = new ALPNServerConnectionFactory("h3", "h2", "http/1.1");
 		//alpn.setDefaultProtocol("h3");
-		alpn.setDefaultProtocol("http/1.1");
-//		SslContextFactory.Server sslFactory = new SslContextFactory.Server();
-//		/* Create PKCS12 file: https://gist.github.com/novemberborn/4eb91b0d166c27c2fcd4 */
-//		sslFactory.setKeyStore(Certs.loadPkcs12(keyStorePkcs12, keyStorePassword.toCharArray()));
+		//alpn.setDefaultProtocol("http/1.1");
+		alpn.setDefaultProtocol("h2");
 		var ssl = new SslConnectionFactory(sslContext, alpn.getProtocol());
 		/* Handlers are found using string lookups in the ConnectionFactory list of the ServerConnector */
 		@SuppressWarnings("all") var httpSecure = new ServerConnector(server, ssl, alpn, /*http3,*/ http2, http1);
@@ -158,6 +157,11 @@ public class JettySetup {
 		//sslFactory.setKeyStore(Certs.loadPkcs12(keyStorePkcs12, keyStorePassword.toCharArray()));
 		sslFactory.setKeyStorePassword(keyStorePassword);
 		//sslFactory.setKeyStoreResource(new PathResource(keyStorePkcs12));
+		
+//		class SslCtx extends SslContextFactory {
+//			
+//		}
+		
 		return sslFactory;
 	}
 	
@@ -186,11 +190,11 @@ public class JettySetup {
 		secureCustomizer.setSniHostCheck(requireSni);
 		httpConfig.addCustomizer(secureCustomizer);
 		
-		httpConfig.addCustomizer((connector, channelConfig, request) -> {
+		/*httpConfig.addCustomizer((connector, channelConfig, request) -> {
 			if(request.getHttpVersion().getVersion() != HttpVersion.HTTP_3.getVersion()) {
 				request.getResponse().getHttpFields().add(HttpHeader.ALT_SVC, "h3=\":443\"; ma=3600");
 			}
-		});
+		});*/
 		
 		return httpConfig;
 	}
