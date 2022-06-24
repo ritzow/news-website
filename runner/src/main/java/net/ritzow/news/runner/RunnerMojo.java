@@ -28,6 +28,9 @@ public class RunnerMojo extends AbstractMojo {
 	@Parameter(name = "jvmProps")
 	private File jvmProps;
 	
+	@Parameter(name = "reportNonZeroExit", defaultValue = "false")
+	private boolean reportNonZeroExit;
+	
 	@Override
 	public void execute() throws MojoFailureException {
 		var project = session.getCurrentProject();
@@ -50,10 +53,11 @@ public class RunnerMojo extends AbstractMojo {
 				jvmProps
 			).toList();
 
-			getLog().info("Running project " + project.getId());
-			getLog().info(String.join(" ", args));
-
+			long startTime = System.nanoTime();
 			var process = new ProcessBuilder(args).start();
+
+			getLog().info("Running project " + project.getId() + " as process " + process.pid());
+			getLog().info(String.join(" ", args));
 
 			getLog().info("Maven will terminate the program "
 				+ (process.supportsNormalTermination() ? "forcibly" : "normally")
@@ -62,7 +66,7 @@ public class RunnerMojo extends AbstractMojo {
 			
 			var stdout = new Thread(() -> {
 				try(var scan = process.inputReader(StandardCharsets.UTF_8)) {
-					scan.lines().forEachOrdered(getLog()::info);
+					scan.lines().forEachOrdered(content -> getLog().info("[STDOUT] " + content));
 				} catch(IOException e) {
 					throw new RuntimeException(e);
 				}
@@ -72,7 +76,7 @@ public class RunnerMojo extends AbstractMojo {
 
 			var stderr = new Thread(() -> {
 				try(var scan = process.errorReader(StandardCharsets.UTF_8)) {
-					scan.lines().forEachOrdered(getLog()::warn);
+					scan.lines().forEachOrdered(content -> getLog().info("[STDERR] " + content));
 				} catch(IOException e) {
 					throw new RuntimeException(e);
 				}
@@ -88,7 +92,7 @@ public class RunnerMojo extends AbstractMojo {
 					try {
 						process.destroy();
 						int status = exitApplication(process);
-						if(status != 0) {
+						if(status != 0 && reportNonZeroExit) {
 							getLog().error("Application exited with exit code " + status);
 						}
 					} catch(InterruptedException e) {
@@ -99,7 +103,7 @@ public class RunnerMojo extends AbstractMojo {
 
 			try {
 				int status = exitApplication(process);
-				if(status != 0) {
+				if(status != 0 && reportNonZeroExit) {
 					throw new MojoFailureException("Application exited with exit code " + status);
 				}
 			} catch(InterruptedException e) {
