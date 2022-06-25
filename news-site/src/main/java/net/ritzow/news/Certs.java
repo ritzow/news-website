@@ -2,19 +2,20 @@ package net.ritzow.news;
 
 import java.io.IOException;
 import java.math.BigInteger;
+import java.nio.ByteBuffer;
+import java.nio.CharBuffer;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.security.KeyStore;
+import java.security.*;
 import java.security.KeyStore.PasswordProtection;
 import java.security.KeyStore.PrivateKeyEntry;
-import java.security.KeyStoreException;
-import java.security.NoSuchAlgorithmException;
-import java.security.SecureRandom;
 import java.security.cert.Certificate;
 import java.security.cert.CertificateException;
 import java.sql.Time;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.Set;
 import org.bouncycastle.asn1.DERIA5String;
 import org.bouncycastle.asn1.DERUTF8String;
@@ -45,14 +46,46 @@ public class Certs {
 		
 		return ks;
 	}
-	
+
+	private static byte[] longToBytes(long l) {
+		byte[] result = new byte[Long.BYTES];
+		for (int i = Long.BYTES - 1; i >= 0; i--) {
+			result[i] = (byte)(l & 0xFF);
+			l >>= Byte.SIZE;
+		}
+		return result;
+	}
+
 	public static KeyStore selfSigned(String host, String org, char[] password) throws IOException {
 		try {
-			int keySize = 2048;
 			var gen = new RSAKeyPairGenerator();
+
+			var seed = MessageDigest.getInstance("SHA256");
+
+			{
+				ByteBuffer bb = StandardCharsets.UTF_8.encode(CharBuffer.wrap(password));
+//				byte[] b = new byte[bb.remaining()];
+//				bb.get(b);
+				seed.update(bb);
+//				random.setSeed(b);
+				//Arrays.fill(b, (byte)0);
+				bb.clear();
+				//clear the password
+				while(bb.hasRemaining()) {
+					bb.put((byte)0);
+				}
+			}
+
+			var from = Instant.now().truncatedTo(ChronoUnit.HOURS);
+			
+			seed.update(longToBytes(from.toEpochMilli()));
+
+			var random = new SecureRandom(seed.digest());
+
+			int keySize = 2048;
 			gen.init(new RSAKeyGenerationParameters(
 				BigInteger.valueOf(0x10001), 
-				SecureRandom.getInstanceStrong(), 
+				random,
 				keySize, PrimeCertaintyCalculator.getDefaultCertainty(keySize)));
 			var pair = gen.generateKeyPair();
 			var privateKey = pair.getPrivate();
@@ -65,14 +98,12 @@ public class Certs {
 			var signer = new BcRSAContentSignerBuilder(sigAlgId, 
 				new AlgorithmIdentifier(new DefaultDigestAlgorithmIdentifierFinder().find(sigAlgId).getAlgorithm()))
 				.build(privateKey);
-			
-			var now = Instant.now();
 				
 			var cert = new X509v3CertificateBuilder(
 				issuer,
-				BigInteger.valueOf(Instant.now().toEpochMilli()),
-				Time.from(now),
-				Time.from(now.plus(Duration.ofHours(1))),
+				BigInteger.valueOf(from.toEpochMilli() + 1), //TODO include password hash in serial number
+				Time.from(from),
+				Time.from(from.plus(Duration.ofHours(1))),
 				issuer,
 				SubjectPublicKeyInfoFactory.createSubjectPublicKeyInfo(publicKey)
 			)

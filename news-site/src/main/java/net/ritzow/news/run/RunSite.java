@@ -14,7 +14,7 @@ public class RunSite {
 	public static void main(String[] args) throws Exception {
 		String host = System.getProperty("hostname");
 		String organization = System.getProperty("organization");
-		String password = Objects.requireNonNullElseGet(System.getProperty("keystorePassword"), RunSite::generatePassword);
+		String password = Objects.requireNonNullElseGet(System.getProperty("password"), RunSite::generatePassword);
 		
 		var cert = System.getProperty("keystore") == null ? Certs.selfSigned(host, organization, password.toCharArray())
 			: Certs.loadPkcs12(Path.of(System.getProperty("keystore")), password.toCharArray());

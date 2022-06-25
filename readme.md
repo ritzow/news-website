@@ -17,8 +17,8 @@ For building, testing, and running. Follows standard build system structure. The
 ```properties
 # Optional path to a PKCS #12 file
 keystore = <path>
-# Keystore password (used as password for self-signed cert if keystore is absent)
-keystorePassword = <password>
+# Keystore password (used as password and keygen seed (NOT SECURE) for self-signed cert if keystore is absent)
+password = <password>
 # Human-readable organization name for self-signed cert
 organization = <name>
 #DNS name for the server used by self-signed cert, TLS, and other functionality
