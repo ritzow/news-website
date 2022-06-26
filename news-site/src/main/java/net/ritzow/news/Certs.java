@@ -59,21 +59,13 @@ public class Certs {
 	public static KeyStore selfSigned(String host, String org, char[] password) throws IOException {
 		try {
 			var gen = new RSAKeyPairGenerator();
-
 			var seed = MessageDigest.getInstance("SHA256");
-
-			{
-				ByteBuffer bb = StandardCharsets.UTF_8.encode(CharBuffer.wrap(password));
-//				byte[] b = new byte[bb.remaining()];
-//				bb.get(b);
-				seed.update(bb);
-//				random.setSeed(b);
-				//Arrays.fill(b, (byte)0);
-				bb.clear();
-				//clear the password
-				while(bb.hasRemaining()) {
-					bb.put((byte)0);
-				}
+			ByteBuffer passwordBytes = StandardCharsets.UTF_8.encode(CharBuffer.wrap(password));
+			seed.update(passwordBytes);
+			passwordBytes.clear();
+			//clear the password
+			while(passwordBytes.hasRemaining()) {
+				passwordBytes.put((byte)0);
 			}
 
 			var from = Instant.now().truncatedTo(ChronoUnit.HOURS);
@@ -98,10 +90,17 @@ public class Certs {
 			var signer = new BcRSAContentSignerBuilder(sigAlgId, 
 				new AlgorithmIdentifier(new DefaultDigestAlgorithmIdentifierFinder().find(sigAlgId).getAlgorithm()))
 				.build(privateKey);
+			
+			MessageDigest serialHash = MessageDigest.getInstance("SHA256");
+			serialHash.update(passwordBytes);
+			serialHash.update(host.getBytes(StandardCharsets.UTF_8));
+			serialHash.update(org.getBytes(StandardCharsets.UTF_8));
+			serialHash.update(longToBytes(from.toEpochMilli()));
+			BigInteger serial = new BigInteger(1, serialHash.digest());
 				
 			var cert = new X509v3CertificateBuilder(
 				issuer,
-				BigInteger.valueOf(from.toEpochMilli() + 1), //TODO include password hash in serial number
+				serial,
 				Time.from(from),
 				Time.from(from.plus(Duration.ofHours(1))),
 				issuer,
@@ -109,6 +108,7 @@ public class Certs {
 			)
 				.addExtension(Extension.basicConstraints, true, new BasicConstraints(false))
 				.addExtension(Extension.subjectAlternativeName, false, 
+					//TODO if host is an IP address, use different general name type
 					new GeneralNames(new GeneralName(GeneralName.dNSName, new DERIA5String(host))))
 				.addExtension(Extension.keyUsage, true, new KeyUsage(KeyUsage.digitalSignature))
 				.addExtension(Extension.extendedKeyUsage, false, new ExtendedKeyUsage(KeyPurposeId.id_kp_serverAuth))
