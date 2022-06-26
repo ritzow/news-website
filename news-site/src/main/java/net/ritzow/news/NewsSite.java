@@ -92,7 +92,8 @@ public final class NewsSite {
 					RES_FONT,
 					RES_FONT_FACE
 				)),
-				entry("session", SessionPage::sessionPage)
+				entry("session", SessionPage::sessionPage),
+				entry("kill", ShutdownPage::shutdownPage)
 			)
 		);
 		
