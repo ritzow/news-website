@@ -40,7 +40,7 @@ public class ArticlePage {
 				//TODO make sure there isn't an extra component in the path
 				
 				if(name.isEmpty()) {
-					NewsSite.doWrongArticlePath(request, site, mainLocale);
+					doWrongArticlePath(request, site, mainLocale);
 					return;
 				}
 				
@@ -57,7 +57,7 @@ public class ArticlePage {
 				}
 				
 				if(supported.isEmpty()) {
-					NewsSite.doNoSuchArticle(request, site, mainLocale, urlname);
+					doNoSuchArticle(request, site, mainLocale, urlname);
 					return;
 				}
 				
@@ -65,7 +65,7 @@ public class ArticlePage {
 				Optional<Article<MarkdownContent>> article = site.cm.getLatestArticle(urlname, articleLocale, MarkdownContent::new);
 				
 				if(article.isEmpty()) {
-					NewsSite.doNoSuchArticle(request, site, mainLocale, urlname);
+					doNoSuchArticle(request, site, mainLocale, urlname);
 					return;
 				}
 				
@@ -158,4 +158,23 @@ public class ArticlePage {
 		);	
 	}
 
+
+	/* TODO translate error pages */
+
+	public static void doNoSuchArticle(Request request, NewsSite site, Locale mainLocale, String urlname) {
+		NewsSite.doDecoratedPage(HttpStatus.NOT_FOUND_404, request, site, mainLocale, "No such article",
+			p("No such article \"" + urlname + "\"")
+		);
+	}
+
+	public static void doWrongArticlePath(Request request, NewsSite site, Locale mainLocale) {
+		NewsSite.doDecoratedPage(HttpStatus.NOT_FOUND_404, request, site, mainLocale, "Not an article",
+			each(
+				p("Please specify an article URL component: ").with(
+					span(request.getHttpURI().toURI().normalize() + "<article-path>")
+				),
+				a("Go home").withHref("/")
+			)
+		);
+	}
 }

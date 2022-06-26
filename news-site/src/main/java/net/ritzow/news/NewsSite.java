@@ -6,16 +6,15 @@ import java.net.InetAddress;
 import java.security.KeyStore;
 import java.sql.SQLException;
 import java.text.NumberFormat;
+import java.time.Duration;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.FormatStyle;
 import java.util.*;
 import net.ritzow.news.component.CommonComponents;
 import net.ritzow.news.database.ContentManager;
-import net.ritzow.news.page.ArticlePage;
-import net.ritzow.news.page.ExceptionPage;
-import net.ritzow.news.page.MainPage;
-import net.ritzow.news.page.SessionPage;
+import net.ritzow.news.page.*;
+import net.ritzow.news.response.CachingImmutableRequestConsumer;
 import net.ritzow.news.response.ContentSource;
 import net.ritzow.news.response.NamedResourceConsumer;
 import org.eclipse.jetty.http.HttpStatus;
@@ -79,13 +78,13 @@ public final class NewsSite {
 		RequestConsumer<NewsSite> route = matchStaticPaths(
 			rootNoMatchOrNext(
 				MainPage::mainPageGenerator,
-				NewsSite::doGeneric404,
+				ErrorPages::doGeneric404,
 				entry("article", ArticlePage::articlePageProcessor),
 				entry("opensearch", new CachingImmutableRequestConsumer<>(RES_OPENSEARCH, Duration.ZERO)),
 				entry("search", SearchPage::searchPage),
 				entry("content", rootNoMatchOrNext(
-					NewsSite::doGeneric404,
-					NewsSite::doGeneric404,
+					ErrorPages::doGeneric404,
+					ErrorPages::doGeneric404,
 					/* Content hashes */
 					RES_ICON,
 					RES_GLOBAL_CSS,
@@ -117,7 +116,7 @@ public final class NewsSite {
 		}
 		doEmptyResponse(request, HttpStatus.NO_CONTENT_204);
 	}
-	
+
 	public static String serverTime(Locale locale) {
 		return ZonedDateTime.now().format(
 			DateTimeFormatter.ofLocalizedDateTime(FormatStyle.LONG).withLocale(locale));
@@ -159,30 +158,4 @@ public final class NewsSite {
 	public static String prettyUrl(Request request) {
 		return "\"" + request.getHttpURI().getHost() + request.getHttpURI().getDecodedPath() + "\"";
 	}
-	
-	/* TODO translate error pages */
-	
-	public static void doNoSuchArticle(Request request, NewsSite site, Locale mainLocale, String urlname) {
-		doDecoratedPage(HttpStatus.NOT_FOUND_404, request, site, mainLocale, "No such article",
-			p("No such article \"" + urlname + "\"")
-		);
-	}
-	
-	public static void doWrongArticlePath(Request request, NewsSite site, Locale mainLocale) {
-		doDecoratedPage(HttpStatus.NOT_FOUND_404, request, site, mainLocale, "Not an article",
-			each(
-				p("Please specify an article URL component: ").with(
-					span(request.getHttpURI().toURI().normalize() + "<article-path>")
-				),
-				a("Go home").withHref("/")
-			)
-		);
-	}
-	
-	private static void doGeneric404(Request request, NewsSite site, @SuppressWarnings("Unused") Iterator<String> path) {
-		doDecoratedPage(HttpStatus.NOT_FOUND_404, request, site, pageLocale(request, site), "No Such Path",
-			p("No such path " + prettyUrl(request))
-		);
-	}
-	
 }
