@@ -24,7 +24,7 @@ public class ExceptionPage {
 			context(request, site.translator, Map.of(),
 				CommonComponents.page("Error", 
 					contentPath(NewsSite.RES_ICON),
-					contentPath(NewsSite.RES_OPENSEARCH),
+					"/opensearch",
 					contentPath(NewsSite.RES_GLOBAL_CSS),
 					Locale.forLanguageTag("en-US"),
 					CommonComponents.headerlessContent(

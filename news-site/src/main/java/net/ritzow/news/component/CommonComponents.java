@@ -82,7 +82,7 @@ public class CommonComponents {
 					.withRel("search")
 					.withHref(opensearchPath)
 					.withType("application/opensearchdescription+xml")
-					.withTitle("Ritzow Net"),
+					.withTitle(System.getProperties().getProperty("title", System.getProperties().getProperty("hostname"))),
 				link().withRel("stylesheet")
 					.withHref(contentPath(NewsSite.RES_FONT_FACE)),
 				link().withRel("stylesheet")

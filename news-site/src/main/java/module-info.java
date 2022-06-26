@@ -10,6 +10,7 @@ module net.ritzow.news {
 	requires com.j2html;
 	requires org.commonmark;
 	requires java.sql;
+	requires java.xml;
 	requires com.zaxxer.hikari;
 	/*requires java.management;*/
 }

@@ -52,8 +52,10 @@ public final class NewsSite {
 	public static final NamedResourceConsumer<NewsSite> 
 		RES_GLOBAL_CSS = NamedResourceConsumer.ofHashed(ContentSource.ofModuleResource("/css/global.css", "text/css")),
 		RES_ICON = NamedResourceConsumer.ofHashed(ContentSource.ofModuleResource("/image/icon.svg", "image/svg+xml")),
-		RES_OPENSEARCH = NamedResourceConsumer.ofHashed(ContentSource.ofModuleResource("/xml/opensearch.xml", "application/opensearchdescription+xml")),
 		RES_FONT = NamedResourceConsumer.ofHashed(ContentSource.ofModuleResource("/font/OpenSans-Regular.ttf", "font/ttf"));
+	
+	private static final ContentSource 
+		RES_OPENSEARCH = ContentSource.ofString(OpenSearch.generateOpensearchXml(), "application/opensearchdescription+xml");
 	
 	public static final NamedResourceConsumer<NewsSite>
 		RES_FONT_FACE = NamedResourceConsumer.ofHashed(
@@ -79,13 +81,14 @@ public final class NewsSite {
 				MainPage::mainPageGenerator,
 				NewsSite::doGeneric404,
 				entry("article", ArticlePage::articlePageProcessor),
+				entry("opensearch", new CachingImmutableRequestConsumer<>(RES_OPENSEARCH, Duration.ZERO)),
+				entry("search", SearchPage::searchPage),
 				entry("content", rootNoMatchOrNext(
 					NewsSite::doGeneric404,
 					NewsSite::doGeneric404,
 					/* Content hashes */
 					RES_ICON,
 					RES_GLOBAL_CSS,
-					RES_OPENSEARCH,
 					RES_FONT,
 					RES_FONT_FACE
 				)),
@@ -140,7 +143,7 @@ public final class NewsSite {
 			context(request, site.translator, Map.of(),
 				CommonComponents.page(title, 
 					contentPath(RES_ICON),
-					contentPath(RES_OPENSEARCH),
+					"/opensearch",
 					contentPath(RES_GLOBAL_CSS),
 					mainLocale,
 					CommonComponents.content(
