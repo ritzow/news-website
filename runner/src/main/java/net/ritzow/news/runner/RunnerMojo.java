@@ -91,6 +91,14 @@ public class RunnerMojo extends AbstractMojo {
 
 					try {
 						process.destroy();
+						
+						try {
+							getLog().info("[STDIN] " + new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8));
+							getLog().info("[STDERR] " + new String(process.getErrorStream().readAllBytes(), StandardCharsets.UTF_8));
+						} catch(IOException e) {
+							throw new RuntimeException(e);
+						}
+
 						int status = exitApplication(process);
 						if(status != 0 && reportNonZeroExit) {
 							getLog().error("Application exited with exit code " + status);
