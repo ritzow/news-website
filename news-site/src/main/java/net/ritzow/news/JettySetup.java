@@ -9,10 +9,12 @@ import java.net.InetAddress;
 import java.security.KeyStore;
 import java.util.EnumSet;
 import java.util.List;
-import javax.net.ssl.SSLContext;
 import org.eclipse.jetty.alpn.server.ALPNServerConnectionFactory;
-import org.eclipse.jetty.http.*;
+import org.eclipse.jetty.http.CookieCompliance;
+import org.eclipse.jetty.http.HttpCompliance;
 import org.eclipse.jetty.http.HttpCookie.SameSite;
+import org.eclipse.jetty.http.HttpStatus;
+import org.eclipse.jetty.http.UriCompliance;
 import org.eclipse.jetty.http2.server.HTTP2ServerConnectionFactory;
 import org.eclipse.jetty.http3.server.HTTP3ServerConnectionFactory;
 import org.eclipse.jetty.http3.server.HTTP3ServerConnector;
@@ -117,7 +119,9 @@ public class JettySetup {
 	
 	private static ServerConnector httpPlaintextConnector(Server server, InetAddress bind, HttpConfiguration config) {
 		var http1 = new HttpConnectionFactory(new HttpConfiguration(config));
+		
 		@SuppressWarnings("all") var http11Insecure = new ServerConnector(server, http1);
+		
 		setCommonProperties(http11Insecure, bind, 80);
 		return http11Insecure;
 	}

@@ -164,6 +164,12 @@
             <artifactId>commonmark</artifactId>
             <version>0.18.0</version>
         </dependency>
+        <dependency>
+            <!-- Could use for search functionality in the future -->
+            <groupId>org.apache.lucene</groupId>
+            <artifactId>lucene-core</artifactId>
+            <version>9.2.0</version>
+        </dependency>
 
         <!-- Database -->
         <dependency>

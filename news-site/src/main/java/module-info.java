@@ -12,5 +12,6 @@ module net.ritzow.news {
 	requires java.sql;
 	requires java.xml;
 	requires com.zaxxer.hikari;
+	requires org.apache.lucene.core;
 	/*requires java.management;*/
 }
