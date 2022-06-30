@@ -17,6 +17,8 @@ import net.ritzow.news.page.*;
 import net.ritzow.news.response.CachingImmutableRequestConsumer;
 import net.ritzow.news.response.ContentSource;
 import net.ritzow.news.response.NamedResourceConsumer;
+import org.apache.lucene.queryparser.classic.ParseException;
+import org.apache.lucene.queryparser.flexible.core.QueryNodeException;
 import org.eclipse.jetty.http.HttpStatus;
 import org.eclipse.jetty.server.Request;
 import org.eclipse.jetty.server.Server;
@@ -73,6 +75,14 @@ public final class NewsSite {
 		SQLException {
 		cm = ContentManager.ofMemoryDatabase();
 		ContentUtil.genArticles(cm);
+		try {
+			System.out.println(cm.search("nmfdl").toList());
+		} catch(
+			QueryNodeException |
+			IOException |
+			ParseException e) {
+			throw new RuntimeException(e);
+		}
 		translator = Translator.ofProperties(properties("/lang/welcome.properties"));
 		this.peers = peers;
 		RequestConsumer<NewsSite> route = matchStaticPaths(

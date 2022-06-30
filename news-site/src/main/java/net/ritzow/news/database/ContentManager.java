@@ -14,9 +14,22 @@ import java.time.Instant;
 import java.util.*;
 import java.util.Map.Entry;
 import java.util.function.Function;
+import java.util.stream.Stream;
 import javax.crypto.SecretKeyFactory;
 import javax.crypto.spec.PBEKeySpec;
 import net.ritzow.news.CharsetUtil;
+import org.apache.lucene.analysis.standard.StandardAnalyzer;
+import org.apache.lucene.document.Document;
+import org.apache.lucene.document.Field.Store;
+import org.apache.lucene.document.TextField;
+import org.apache.lucene.index.IndexWriter;
+import org.apache.lucene.index.IndexWriterConfig;
+import org.apache.lucene.queryparser.classic.ParseException;
+import org.apache.lucene.queryparser.flexible.core.QueryNodeException;
+import org.apache.lucene.queryparser.flexible.standard.StandardQueryParser;
+import org.apache.lucene.search.SearcherFactory;
+import org.apache.lucene.search.SearcherManager;
+import org.apache.lucene.store.ByteBuffersDirectory;
 
 import static java.util.Map.entry;
 
@@ -113,7 +126,7 @@ public final class ContentManager {
 		runMultiple(
 			"""
 			CREATE PROCEDURE new_article(IN in_urlname URLNAME, IN locale_original LOCALENAME,
-				IN title BLOB, IN markdown BLOB)
+				IN title BLOB, IN markdown BLOB, OUT out_article_id INTEGER)
 			MODIFIES SQL DATA
 			BEGIN ATOMIC
 				DECLARE locale_id SMALLINT DEFAULT NULL;
@@ -136,6 +149,7 @@ public final class ContentManager {
 				END IF;
 				INSERT INTO articles_content (id, locale, title, markdown, revision)
 					VALUES (article_id, locale_id, title, markdown, revision_id);
+				SET out_article_id = article_id;
 			END
 			""",
 			"""
@@ -208,7 +222,6 @@ public final class ContentManager {
 				SET comment_id = IDENTITY();
 			END
 			""",
-			//TODO can't make out_time a BIGINT?!?!?!!? WILL CAUSE BREAKAGE!!!
 			"""
 			CREATE FUNCTION list_comments(IN article_id INTEGER)
 				RETURNS TABLE (out_id INTEGER, out_username USERNAME, out_time BIGINT, out_content BLOB)
@@ -225,6 +238,41 @@ public final class ContentManager {
 			END
 			"""
 		);
+
+		initSearch();
+	}
+	
+	private IndexWriter documentIndexer;
+	private SearcherManager searcher;
+	
+	private void initSearch() {
+		try {
+			documentIndexer = new IndexWriter(new ByteBuffersDirectory(), new IndexWriterConfig(new StandardAnalyzer()));
+			searcher = new SearcherManager(documentIndexer, new SearcherFactory());
+		} catch(IOException e) {
+			throw new RuntimeException(e);
+		}
+	}
+	
+	public Stream<String> search(String query) throws QueryNodeException, IOException, ParseException {
+		searcher.maybeRefresh();
+		var search = searcher.acquire();
+		try {
+			var parser = new StandardQueryParser(new StandardAnalyzer());
+			var searchResults = search.search(parser.parse(query, "content"), 10);
+			System.out.println(searchResults.totalHits.relation);
+			System.out.println(searchResults.totalHits.value);
+			return Arrays.stream(searchResults.scoreDocs)
+				.map(scoreDoc -> {
+					try {
+						return search.doc(scoreDoc.doc);
+					} catch(IOException e) {
+						throw new RuntimeException(e);
+					}
+				}).map(fields -> fields.getField("title").toString());	
+		} finally {
+			searcher.release(search);
+		}
 	}
 	
 	private void runMultiple(String... sql) {
@@ -326,14 +374,28 @@ public final class ContentManager {
 	
 	public void newArticle(String urlName, Locale locale, String title, String markdown) {
 		try(var db = this.db.getConnection()) {
-			try(var st = db.prepareCall("call new_article(?, ?, ?, ?)")) {
+			try(var st = db.prepareCall("call new_article(?, ?, ?, ?, ?)")) {
 				st.setString(1, urlName);
 				st.setString(2, locale.toLanguageTag());
 				byte[] data = title.getBytes(StandardCharsets.UTF_8);
 				st.setBlob(3, new ByteArrayInputStream(data), data.length);
 				data = markdown.getBytes(StandardCharsets.UTF_8);
 				st.setBlob(4, new ByteArrayInputStream(data), data.length);
+				st.registerOutParameter(5, Types.INTEGER);
 				st.execute();
+				
+				int articleID = st.getInt(5);
+
+				Document doc = new Document();
+				//doc.add(new IntPoint("id", articleID));
+				//doc.add(new IntPoint("lang", 2 /* TODO get actual id from database table */));
+				doc.add(new TextField("title", title, Store.YES));
+				//doc.add(new TextField("content", new MarkdownTokenStream(Parser.builder().build().parse(markdown))));
+				doc.add(new TextField("content", markdown, Store.YES));
+				documentIndexer.addDocument(doc);
+			} catch(
+				IOException e) {
+				throw new RuntimeException(e);
 			}
 		} catch(SQLException e) {
 			throw new RuntimeException(e);
