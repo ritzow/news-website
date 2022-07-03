@@ -9,11 +9,16 @@ import j2html.tags.specialized.FormTag;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.util.HashMap;
+import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.stream.Stream;
+import net.ritzow.news.component.CommonComponents;
 import org.eclipse.jetty.server.Request;
 
 import static j2html.TagCreator.*;
+import static net.ritzow.news.ResponseUtil.contentPath;
+import static net.ritzow.news.ResponseUtil.doGetHtmlStreamed;
 
 public class PageTemplate {
 
@@ -67,7 +72,24 @@ public class PageTemplate {
 			}
 		};
 	}
-	
+
+	public static void doDecoratedPage(int status, Request request, NewsSite site, Locale mainLocale, String title, DomContent body) {
+		doGetHtmlStreamed(request, status, List.of(mainLocale),
+			context(request, site.translator, Map.of(),
+				CommonComponents.page(title, 
+					contentPath(NewsSite.RES_ICON),
+					"/opensearch",
+					contentPath(NewsSite.RES_GLOBAL_CSS),
+					mainLocale,
+					CommonComponents.content(
+						CommonComponents.header(request, site),
+						body
+					)
+				)
+			)
+		);
+	}
+
 	public interface RequestHandler {
 		DomContent handle(HtmlSessionState request) throws IOException;
 	}

@@ -2,41 +2,37 @@ package net.ritzow.news.database;
 
 import com.zaxxer.hikari.HikariDataSource;
 import java.io.*;
-import java.nio.ByteBuffer;
-import java.nio.CharBuffer;
-import java.nio.charset.CharacterCodingException;
 import java.nio.charset.StandardCharsets;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
-import java.security.spec.InvalidKeySpecException;
 import java.sql.*;
 import java.time.Instant;
 import java.util.*;
 import java.util.Map.Entry;
 import java.util.function.Function;
-import java.util.stream.Stream;
-import javax.crypto.SecretKeyFactory;
-import javax.crypto.spec.PBEKeySpec;
+import java.util.regex.Pattern;
 import net.ritzow.news.CharsetUtil;
+import net.ritzow.news.Cryptography;
 import org.apache.lucene.analysis.standard.StandardAnalyzer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field.Store;
+import org.apache.lucene.document.IntPoint;
+import org.apache.lucene.document.StoredField;
 import org.apache.lucene.document.TextField;
-import org.apache.lucene.index.IndexWriter;
-import org.apache.lucene.index.IndexWriterConfig;
+import org.apache.lucene.index.*;
 import org.apache.lucene.queryparser.classic.ParseException;
 import org.apache.lucene.queryparser.flexible.core.QueryNodeException;
-import org.apache.lucene.queryparser.flexible.standard.StandardQueryParser;
-import org.apache.lucene.search.SearcherFactory;
-import org.apache.lucene.search.SearcherManager;
+import org.apache.lucene.search.BooleanClause.Occur;
+import org.apache.lucene.search.*;
 import org.apache.lucene.store.ByteBuffersDirectory;
+import org.commonmark.parser.Parser;
 
 import static java.util.Map.entry;
 
 public final class ContentManager {
 	
 	private final HikariDataSource db;
-	
+
 	public static ContentManager ofMemoryDatabase() throws SQLException {
 		return new ContentManager();
 	}
@@ -242,34 +238,69 @@ public final class ContentManager {
 		initSearch();
 	}
 	
-	private IndexWriter documentIndexer;
+	private IndexWriter indexer;
 	private SearcherManager searcher;
 	
 	private void initSearch() {
 		try {
-			documentIndexer = new IndexWriter(new ByteBuffersDirectory(), new IndexWriterConfig(new StandardAnalyzer()));
-			searcher = new SearcherManager(documentIndexer, new SearcherFactory());
+			//Look into NRTManager
+			//https://blog.mikemccandless.com/2011/11/near-real-time-readers-with-lucenes.html
+			indexer = new IndexWriter(new ByteBuffersDirectory(), new IndexWriterConfig(new StandardAnalyzer()));
+			//https://blog.mikemccandless.com/2011/11/near-real-time-readers-with-lucenes.html
+			//TODO applyAllDeletes false can improve performance.
+			searcher = new SearcherManager(indexer, new SearcherFactory());
 		} catch(IOException e) {
 			throw new RuntimeException(e);
 		}
 	}
 	
-	public Stream<String> search(String query) throws QueryNodeException, IOException, ParseException {
+	private static final Pattern WORD_DELIM = Pattern.compile("\\s+");
+	
+	public List<Article<String>> search(String query, Locale lang) throws QueryNodeException, IOException, ParseException {
 		searcher.maybeRefresh();
 		var search = searcher.acquire();
 		try {
-			var parser = new StandardQueryParser(new StandardAnalyzer());
-			var searchResults = search.search(parser.parse(query, "content"), 10);
-			System.out.println(searchResults.totalHits.relation);
-			System.out.println(searchResults.totalHits.value);
-			return Arrays.stream(searchResults.scoreDocs)
-				.map(scoreDoc -> {
-					try {
-						return search.doc(scoreDoc.doc);
-					} catch(IOException e) {
-						throw new RuntimeException(e);
+			var builder = new PhraseQuery.Builder();
+			System.out.println(query);
+			WORD_DELIM.splitAsStream(query).forEachOrdered(token -> {
+				System.out.println(token);
+				builder.add(new Term("content", token));
+			});
+			var query1 = new BooleanQuery.Builder()
+				.add(builder.build(), Occur.MUST)
+				.add(IntPoint.newExactQuery("lang", getLocaleIds().get(lang).intValue()), Occur.MUST)
+				.build(); //new StandardQueryParser(new StandardAnalyzer()).parse(query, "content");
+			TopDocs results = search.search(query1, TopScoreDocCollector.createSharedManager(10, null, 10));
+			List<Article<String>> docs = new ArrayList<>(results.scoreDocs.length);
+			for(var result : results.scoreDocs) {
+				search.getIndexReader().document(result.doc, new StoredFieldVisitor() {
+					@Override
+					public Status needsField(FieldInfo fieldInfo) {
+						return Status.YES;
 					}
-				}).map(fields -> fields.getField("title").toString());	
+
+					@Override
+					public void intField(FieldInfo fieldInfo, int value) {
+						try(var db = ContentManager.this.db.getConnection(); var st = db.prepareStatement("SELECT urlname FROM articles WHERE id = ?")) {
+							st.setInt(1, value);
+							var result = st.executeQuery();
+							result.next();
+							getLatestArticle(result.getString(1), lang, reader -> {
+								try {
+									return Parser.builder().build().parseReader(reader)
+										.getFirstChild().toString();
+								} catch(
+									IOException e) {
+									throw new RuntimeException(e);
+								}
+							}).ifPresent(docs::add);
+						} catch(SQLException e) {
+							throw new RuntimeException(e);
+						}
+					}
+				});
+			}
+			return docs;
 		} finally {
 			searcher.release(search);
 		}
@@ -355,6 +386,21 @@ public final class ContentManager {
 		}
 	}
 	
+	public Map<Locale, Short> getLocaleIds() {
+		try(var db = this.db.getConnection()) {
+			try(var st = db.prepareStatement("SELECT code, id FROM locales")) {
+				ResultSet result = st.executeQuery();
+				var list = new HashMap<Locale, Short>(4);
+				while(result.next()) {
+					list.put(Locale.forLanguageTag(result.getString("code")), result.getShort("id"));
+				}
+				return list;
+			}
+		} catch(SQLException e) {
+			throw new RuntimeException(e);
+		}
+	}
+	
 	public List<Locale> getArticleLocales(String urlname) {
 		try(var db = this.db.getConnection()) {
 			try(var st = db.prepareCall("call get_article_langs(?)")) {
@@ -385,37 +431,33 @@ public final class ContentManager {
 				st.execute();
 				
 				int articleID = st.getInt(5);
+				
+				//TODO update existing document if this is a new revision
 
 				Document doc = new Document();
-				//doc.add(new IntPoint("id", articleID));
-				//doc.add(new IntPoint("lang", 2 /* TODO get actual id from database table */));
-				doc.add(new TextField("title", title, Store.YES));
+				doc.add(new StoredField("id", articleID));
+				doc.add(new IntPoint("lang", getLocaleIds().get(locale)));
+				doc.add(new TextField("title", title, Store.NO));
 				//doc.add(new TextField("content", new MarkdownTokenStream(Parser.builder().build().parse(markdown))));
-				doc.add(new TextField("content", markdown, Store.YES));
-				documentIndexer.addDocument(doc);
-			} catch(
-				IOException e) {
-				throw new RuntimeException(e);
+				doc.add(new TextField("content", markdown, Store.NO));
+				indexer.addDocument(doc);
 			}
-		} catch(SQLException e) {
+		} catch(SQLException | IOException e) {
 			throw new RuntimeException(e);
 		}
 	}
 	
 	/* Does not clear password parameter utf8 */
 	public void newAccount(String username, byte[] utf8) {
-		try(var db = this.db.getConnection()) {
-			try(var st = db.prepareCall("call new_account(?, ?, ?, ?)")) {
-				st.setString(1, username);
-				
-				/* For hashing: https://stackoverflow.com/a/2861125/2442171 */
-				byte[] salt = new byte[16];
-				SecureRandom.getInstanceStrong().nextBytes(salt);
-				st.setBytes(2, salt);
-				st.setBytes(3, passwordHash(utf8, salt));
-				st.registerOutParameter(4, Types.INTEGER);
-				st.execute();
-			}
+		try(var db = this.db.getConnection(); var st = db.prepareCall("call new_account(?, ?, ?, ?)")) {
+			st.setString(1, username);				
+			/* For hashing: https://stackoverflow.com/a/2861125/2442171 */
+			byte[] salt = new byte[16];
+			SecureRandom.getInstanceStrong().nextBytes(salt);
+			st.setBytes(2, salt);
+			st.setBytes(3, Cryptography.passwordHash(utf8, salt));
+			st.registerOutParameter(4, Types.INTEGER);
+			st.execute();
 		} catch(SQLException | NoSuchAlgorithmException e) {
 			throw new RuntimeException(e);
 		}
@@ -428,7 +470,7 @@ public final class ContentManager {
 				try(var rs = st.executeQuery()) {
 					if(rs.next()) {
 						/* PASSWORD AUTHENTICATION!!! */
-						return Arrays.equals(passwordHash(password, rs.getBytes("pwSalt")), rs.getBytes("pwHash"));
+						return Arrays.equals(Cryptography.passwordHash(password, rs.getBytes("pwSalt")), rs.getBytes("pwHash"));
 					}
 					return false;
 				}

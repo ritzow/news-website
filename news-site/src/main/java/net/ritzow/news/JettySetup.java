@@ -46,7 +46,7 @@ public class JettySetup {
 			InetAddress... bind) {
 		
 		QueuedThreadPool pool = new QueuedThreadPool();
-		pool.setName("pool");
+		pool.setName("http");
 		Server server = new Server(pool);
 		
 		var sslContextFactory = sslContext(keyStore, keyStorePassword);

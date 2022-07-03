@@ -11,22 +11,18 @@ import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.FormatStyle;
 import java.util.*;
-import net.ritzow.news.component.CommonComponents;
 import net.ritzow.news.database.ContentManager;
 import net.ritzow.news.page.*;
 import net.ritzow.news.response.CachingImmutableRequestConsumer;
 import net.ritzow.news.response.ContentSource;
 import net.ritzow.news.response.NamedResourceConsumer;
-import org.apache.lucene.queryparser.classic.ParseException;
-import org.apache.lucene.queryparser.flexible.core.QueryNodeException;
 import org.eclipse.jetty.http.HttpStatus;
 import org.eclipse.jetty.server.Request;
 import org.eclipse.jetty.server.Server;
 
-import static j2html.TagCreator.*;
+import static j2html.TagCreator.text;
 import static java.util.Map.entry;
 import static net.ritzow.news.JettySetup.newStandardServer;
-import static net.ritzow.news.PageTemplate.context;
 import static net.ritzow.news.ResourceUtil.properties;
 import static net.ritzow.news.ResponseUtil.*;
 
@@ -75,14 +71,6 @@ public final class NewsSite {
 		SQLException {
 		cm = ContentManager.ofMemoryDatabase();
 		ContentUtil.genArticles(cm);
-		try {
-			System.out.println(cm.search("nmfdl").toList());
-		} catch(
-			QueryNodeException |
-			IOException |
-			ParseException e) {
-			throw new RuntimeException(e);
-		}
 		translator = Translator.ofProperties(properties("/lang/welcome.properties"));
 		this.peers = peers;
 		RequestConsumer<NewsSite> route = matchStaticPaths(
@@ -147,24 +135,7 @@ public final class NewsSite {
 		Optional<Locale> existing = site.cm.getSupportedLocales().stream().filter(selected::equals).findAny();
 		HttpUser.session(request).locale(existing.orElseThrow(() -> new RuntimeException("Invalid selected locale \"" + languageTag + "\"")));
 	}
-	
-	public static void doDecoratedPage(int status, Request request, NewsSite site, Locale mainLocale, String title, DomContent body) {
-		doGetHtmlStreamed(request, status, List.of(mainLocale),
-			context(request, site.translator, Map.of(),
-				CommonComponents.page(title, 
-					contentPath(RES_ICON),
-					"/opensearch",
-					contentPath(RES_GLOBAL_CSS),
-					mainLocale,
-					CommonComponents.content(
-						CommonComponents.header(request, site),
-						body
-					)
-				)
-			)
-		);
-	}
-	
+
 	public static String prettyUrl(Request request) {
 		return "\"" + request.getHttpURI().getHost() + request.getHttpURI().getDecodedPath() + "\"";
 	}

@@ -3,10 +3,13 @@ package net.ritzow.news;
 import java.io.StringWriter;
 import javax.xml.parsers.DocumentBuilderFactory;
 import javax.xml.parsers.ParserConfigurationException;
+import javax.xml.transform.OutputKeys;
 import javax.xml.transform.TransformerException;
 import javax.xml.transform.TransformerFactory;
 import javax.xml.transform.dom.DOMSource;
 import javax.xml.transform.stream.StreamResult;
+import org.eclipse.jetty.http.HttpURI;
+import org.slf4j.LoggerFactory;
 import org.w3c.dom.Document;
 
 import static net.ritzow.news.ResponseUtil.contentPath;
@@ -32,20 +35,22 @@ public class OpenSearch {
 		var description = doc.createElement("Description");
 		description.setTextContent("Search " + shortName.getTextContent());
 		
-		var urlRoot = "https://" + System.getProperties().getProperty("hostname") + "/";
+		var uri = HttpURI.build()
+			.scheme("https")
+			.host(System.getProperties().getProperty("hostname"));
 		
 		var image = doc.createElement("Image");
 		image.setAttribute("type", "image/svg+xml");
-		image.setTextContent(urlRoot + contentPath(NewsSite.RES_ICON));
+		image.setTextContent(HttpURI.build(uri).path(contentPath(NewsSite.RES_ICON)).toString());
 		
 		var template = doc.createElement("Url");
 		template.setAttribute("type", "text/html");
-		template.setAttribute("template", urlRoot + "search?q={searchTerms}");
+		template.setAttribute("template", HttpURI.build(uri).path("/search").query("q={searchTerms}").toString());
 		
 		var self = doc.createElement("Url");
 		self.setAttribute("type", "application/opensearchdescription+xml");
 		self.setAttribute("rel", "self");
-		self.setAttribute("template", urlRoot + "opensearch");
+		self.setAttribute("template", HttpURI.build(uri).path("/opensearch").toString());
 		
 		root.appendChild(shortName);
 		root.appendChild(description);
@@ -54,13 +59,13 @@ public class OpenSearch {
 		root.appendChild(self);
 		
 		doc.appendChild(root);
-
-		StringWriter writer = new StringWriter(64);
-
+		
 		try {
-			TransformerFactory.newInstance()
-				.newTransformer()
-				.transform(new DOMSource(doc), new StreamResult(writer));
+			StringWriter writer = new StringWriter(64);
+			var transform = TransformerFactory.newInstance().newTransformer();
+			transform.setOutputProperty(OutputKeys.INDENT, "true");
+			transform.transform(new DOMSource(doc), new StreamResult(writer));
+			LoggerFactory.getLogger(OpenSearch.class).atInfo().log(writer.toString());
 			return writer.toString();
 		} catch(TransformerException e) {
 			throw new RuntimeException(e);

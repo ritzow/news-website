@@ -29,7 +29,7 @@ public class MainPage {
 		switch(HttpMethod.fromString(request.getMethod())) {
 			case GET, HEAD -> {
 				if(path.hasNext()) {
-					NewsSite.doDecoratedPage(HttpStatus.NOT_FOUND_404, request, site, NewsSite.pageLocale(request, site),
+					doDecoratedPage(HttpStatus.NOT_FOUND_404, request, site, NewsSite.pageLocale(request, site),
 						"No such path",
 						p(rawHtml("No such path " + NewsSite.prettyUrl(request)))
 					);
@@ -37,7 +37,7 @@ public class MainPage {
 				}
 				
 				Locale bestLocale = NewsSite.pageLocale(request, site);
-				NewsSite.doDecoratedPage(HttpStatus.OK_200, request, site, bestLocale, "RedNet!",
+				doDecoratedPage(HttpStatus.OK_200, request, site, bestLocale, "RedNet!",
 					generateArticlesList(bestLocale, site)
 				);
 			}

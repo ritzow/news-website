@@ -23,7 +23,7 @@ public class RunSite {
 			false, 
 			cert, 
 			password,
-			Set.of("127.0.0.1", "[::1]", host),
+			Set.of(host),
 			InetAddress.getByName("0.0.0.0")
 		);
 	}

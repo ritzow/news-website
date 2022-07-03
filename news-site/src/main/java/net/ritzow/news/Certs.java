@@ -56,6 +56,7 @@ public class Certs {
 		return result;
 	}
 
+	//TODO allow multiple hostnames
 	public static KeyStore selfSigned(String host, String org, char[] password) throws IOException {
 		try {
 			var gen = new RSAKeyPairGenerator();
