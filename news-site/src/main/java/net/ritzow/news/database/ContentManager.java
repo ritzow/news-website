@@ -437,27 +437,7 @@ public final class ContentManager {
 			throw new RuntimeException(e);
 		}
 	}
-	
-	private static byte[] passwordHash(byte[] passwordUtf8, byte[] salt) {
-		try {
-			CharBuffer utf16 = CharsetUtil.decoder(StandardCharsets.UTF_8).decode(ByteBuffer.wrap(passwordUtf8));
-			char[] password = new char[utf16.length()];
-			utf16.get(password);
-			/* TODO use more iterations? */
-			PBEKeySpec spec = new PBEKeySpec(password, salt, 100_000, 512);
-			Arrays.fill(password, '\0');
-			utf16.flip();
-			while(utf16.hasRemaining()) {
-				utf16.put('\0');
-			}
-			byte[] hash = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA512").generateSecret(spec).getEncoded();
-			spec.clearPassword();
-			return hash;
-		} catch(CharacterCodingException | InvalidKeySpecException | NoSuchAlgorithmException e) {
-			throw new RuntimeException(e);
-		}
-	}
-	
+
 	public record Article<T>(String title, T content, int id) {}
 	
 	/* Returned reader must be closed */
