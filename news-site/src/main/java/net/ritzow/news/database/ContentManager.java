@@ -256,7 +256,7 @@ public final class ContentManager {
 	
 	private static final Pattern WORD_DELIM = Pattern.compile("\\s+");
 	
-	public List<Article<String>> search(String query, Locale lang) throws QueryNodeException, IOException, ParseException {
+	public <T> List<Article<T>> search(String query, Locale lang, Function<Reader, T> content) throws QueryNodeException, IOException, ParseException {
 		searcher.maybeRefresh();
 		var search = searcher.acquire();
 		try {
@@ -271,7 +271,7 @@ public final class ContentManager {
 				.add(IntPoint.newExactQuery("lang", getLocaleIds().get(lang).intValue()), Occur.MUST)
 				.build(); //new StandardQueryParser(new StandardAnalyzer()).parse(query, "content");
 			TopDocs results = search.search(query1, TopScoreDocCollector.createSharedManager(10, null, 10));
-			List<Article<String>> docs = new ArrayList<>(results.scoreDocs.length);
+			List<Article<T>> docs = new ArrayList<>(results.scoreDocs.length);
 			for(var result : results.scoreDocs) {
 				search.getIndexReader().document(result.doc, new StoredFieldVisitor() {
 					@Override
@@ -285,15 +285,8 @@ public final class ContentManager {
 							st.setInt(1, value);
 							var result = st.executeQuery();
 							result.next();
-							getLatestArticle(result.getString(1), lang, reader -> {
-								try {
-									return Parser.builder().build().parseReader(reader)
-										.getFirstChild().toString();
-								} catch(
-									IOException e) {
-									throw new RuntimeException(e);
-								}
-							}).ifPresent(docs::add);
+							getLatestArticle(result.getString(1), lang, content)
+								.ifPresent(docs::add);
 						} catch(SQLException e) {
 							throw new RuntimeException(e);
 						}

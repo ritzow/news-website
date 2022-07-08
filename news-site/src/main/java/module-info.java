@@ -14,5 +14,8 @@ module net.ritzow.news {
 	requires com.zaxxer.hikari;
 	requires org.apache.lucene.core;
 	requires org.apache.lucene.queryparser;
+	requires com.google.zxing;
+	requires pngj;
+	/*requires net.imglib2;*/
 	/*requires java.management;*/
 }

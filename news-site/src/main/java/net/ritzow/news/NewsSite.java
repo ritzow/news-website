@@ -35,7 +35,7 @@ import static net.ritzow.news.ResponseUtil.*;
 
 public final class NewsSite {
 	public final Server server;
-	public final ContentManager cm;
+	public final ContentManager cm; //TODO use intellij to refactor cm into getter method
 	public final Translator<String> translator;
 	public final Set<String> peers;
 	
