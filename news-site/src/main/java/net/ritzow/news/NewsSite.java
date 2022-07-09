@@ -139,4 +139,8 @@ public final class NewsSite {
 	public static String prettyUrl(Request request) {
 		return "\"" + request.getHttpURI().getHost() + request.getHttpURI().getDecodedPath() + "\"";
 	}
+
+	public static String websiteTitle() {
+		return System.getProperties().getProperty("title", System.getProperties().getProperty("hostname"));
+	}
 }

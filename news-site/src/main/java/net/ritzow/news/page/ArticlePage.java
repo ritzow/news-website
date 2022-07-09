@@ -1,24 +1,30 @@
 package net.ritzow.news.page;
 
+import com.google.zxing.WriterException;
 import j2html.tags.DomContent;
+import java.io.IOException;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.time.format.FormatStyle;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Locale;
-import java.util.Optional;
+import java.util.*;
 import java.util.function.Function;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 import net.ritzow.news.*;
 import net.ritzow.news.Forms.FormField;
 import net.ritzow.news.Forms.FormWidget;
 import net.ritzow.news.component.LangSelectComponent;
+import net.ritzow.news.content.QR;
 import net.ritzow.news.database.ContentManager.Article;
 import net.ritzow.news.database.ContentManager.Comment;
+import net.ritzow.news.response.CachingImmutableRequestConsumer;
 import org.eclipse.jetty.http.HttpMethod;
 import org.eclipse.jetty.http.HttpStatus;
+import org.eclipse.jetty.http.HttpURI;
+import org.eclipse.jetty.http.MimeTypes;
 import org.eclipse.jetty.server.Request;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -48,11 +54,28 @@ public class ArticlePage {
 				List<Locale> supported = site.cm.getArticleLocales(urlname);
 				
 				if(path.hasNext()) {
-					doDecoratedPage(HttpStatus.NOT_FOUND_404, request, site, mainLocale, "Not Found",
-						p(
-							rawHtml("There is no such page " + NewsSite.prettyUrl(request))
-						)
-					);
+					
+					if(path.next().equals("qrcode") && !path.hasNext()) {
+						try {
+							var components = Pattern.compile("/")
+								.splitAsStream(request.getHttpURI().getPath())
+								.collect(Collectors.toCollection(ArrayDeque::new));
+							components.removeLast();
+							
+							var uri = HttpURI.build(request.getHttpURI())
+								.path(String.join("/", components));
+								
+							CachingImmutableRequestConsumer.doResponse(request.getResponse(), QR.toQrPng(uri.asString()), Duration.ofHours(10), "image/png");
+						} catch(IOException | WriterException e) {
+							throw new RuntimeException(e);
+						}
+					} else {
+						doDecoratedPage(HttpStatus.NOT_FOUND_404, request, site, mainLocale, "Not Found",
+							p(
+								rawHtml("There is no such page " + NewsSite.prettyUrl(request))
+							)
+						);	
+					}
 					return;
 				}
 				
@@ -72,7 +95,7 @@ public class ArticlePage {
 				//TODO create a "share" button that pops-up a selectable area with user-select: all;
 				doDecoratedPage(HttpStatus.OK_200, request, site, mainLocale, article.orElseThrow().title(),
 					each(
-						generateArticlePage(articleLocale, mainLocale, article.orElseThrow()),
+						generateArticlePage(articleLocale, mainLocale, article.orElseThrow(), urlname),
 						HttpUser.getExistingSession(request).flatMap(SessionData::user).map(ArticlePage::newCommentBox).orElse(null),
 						eachStreamed(site.cm.listCommentsNewestFirst(article.orElseThrow().id()).stream().map(comment -> commentBox(mainLocale, comment)))
 					)
@@ -147,12 +170,13 @@ public class ArticlePage {
 		);
 	}
 	
-	public static DomContent generateArticlePage(Locale articleLocale, Locale mainLocale, Article<MarkdownContent> article) {
+	public static DomContent generateArticlePage(Locale articleLocale, Locale mainLocale, Article<MarkdownContent> article, String urlname) {
 		return main().withClasses("main-box", "foreground").withLang(articleLocale.toLanguageTag()).with(
 			article(
 				h1(article.title()).withClass("title-article"),
 				articleLocale.equals(mainLocale) ? null :
 					h3(articleLocale.getDisplayName(mainLocale)).withClass("article-lang"),
+				img().withClasses("qrcode").withCondDraggable(false).withSrc("/article/" + urlname + "/qrcode"),
 				div().withClass("markdown").with(article.content())
 			)
 		);	

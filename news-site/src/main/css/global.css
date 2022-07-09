@@ -295,3 +295,12 @@ body > .page-footer {
 .markdown strong {
 	font-weight: bold;
 }
+
+.qrcode {
+	image-rendering: crisp-edges;
+	width: 25%;
+	display: block;
+	user-select: none;
+	margin-left: auto;
+	margin-right: auto;
+}

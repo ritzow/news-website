@@ -37,7 +37,7 @@ public class MainPage {
 				}
 				
 				Locale bestLocale = NewsSite.pageLocale(request, site);
-				doDecoratedPage(HttpStatus.OK_200, request, site, bestLocale, "RedNet!",
+				doDecoratedPage(HttpStatus.OK_200, request, site, bestLocale, NewsSite.websiteTitle(),
 					generateArticlesList(bestLocale, site)
 				);
 			}

@@ -23,6 +23,8 @@ password = <password>
 organization = <name>
 #DNS name for the server used by self-signed cert, TLS, and other functionality
 hostname = <domain>
+#Website title text used in various places
+title = <name>
 ```
 
 To automatically build and run the server using Maven, in the root directory of the project run

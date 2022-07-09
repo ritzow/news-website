@@ -8,6 +8,7 @@ import net.ritzow.news.ResponseUtil.ContextRequestConsumer;
 import org.eclipse.jetty.http.HttpHeader;
 import org.eclipse.jetty.http.HttpStatus;
 import org.eclipse.jetty.server.Request;
+import org.eclipse.jetty.server.Response;
 
 /* TODO make a similar one that streams from inputstream */
 public class CachingImmutableRequestConsumer<T> implements ContextRequestConsumer<T> {
@@ -39,6 +40,10 @@ public class CachingImmutableRequestConsumer<T> implements ContextRequestConsume
 
 		byte[] bytes = load();
 
+		doResponse(response, bytes, cacheFor, src.mimeType());
+	}
+
+	public static void doResponse(Response response, byte[] bytes, Duration cacheFor, String contentType) throws IOException {
 		response.getHttpFields().addCSV(HttpHeader.CACHE_CONTROL,
 			"max-age=" + cacheFor.toSeconds(),
 			"public",
@@ -46,10 +51,9 @@ public class CachingImmutableRequestConsumer<T> implements ContextRequestConsume
 			//TODO this isn't used here (since we're immutable), but it could maybe be used somewhere else
 			//"stale-while-revalidate=" + Duration.ofSeconds(30).toSeconds()
 		);
-		response.setContentType(src.mimeType());
+		response.setContentType(contentType);
 		response.setContentLength(bytes.length);
 		response.setStatus(HttpStatus.OK_200);
-
 		response.getHttpOutput().write(bytes);
 		response.getHttpOutput().flush();
 	}

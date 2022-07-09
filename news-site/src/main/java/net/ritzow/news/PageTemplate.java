@@ -151,8 +151,8 @@ public class PageTemplate {
 				.withHeight("50px")
 				.withCondDraggable(false)
 				.withClass("logo-img")
-				.withAlt("RedNet Logo Red Circle"),
-			span("RedNet!").withClass("logo-text")
+				.withAlt(NewsSite.websiteTitle() + " Logo Red Circle"),
+			span(NewsSite.websiteTitle()).withClass("logo-text")
 		);
 	}
 

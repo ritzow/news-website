@@ -96,7 +96,7 @@ public class RunnerMojo extends AbstractMojo {
 							getLog().info("[STDIN] " + new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8));
 							getLog().info("[STDERR] " + new String(process.getErrorStream().readAllBytes(), StandardCharsets.UTF_8));
 						} catch(IOException e) {
-							throw new RuntimeException(e);
+							getLog().info(e.getMessage());
 						}
 
 						int status = exitApplication(process);
