@@ -65,7 +65,6 @@ public class OpenSearch {
 			var transform = TransformerFactory.newInstance().newTransformer();
 			transform.setOutputProperty(OutputKeys.INDENT, "true");
 			transform.transform(new DOMSource(doc), new StreamResult(writer));
-			LoggerFactory.getLogger(OpenSearch.class).atInfo().log(writer.toString());
 			return writer.toString();
 		} catch(TransformerException e) {
 			throw new RuntimeException(e);
