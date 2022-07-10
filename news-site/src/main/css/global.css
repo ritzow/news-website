@@ -36,7 +36,6 @@ body {
 	font-family: var(--display-font), ui-sans-serif;
 	display: flex;
 	flex-flow: column;
-	height: 100%;
 	margin: 0;
 	background-color: var(--bg);
 }
@@ -66,12 +65,15 @@ body > .page-footer {
 }
 
 .header {
-	position: relative;
+	position: sticky;
+	top: 0;
+	z-index: 1;
 	border-bottom-left-radius: var(--radius);
 	border-bottom-right-radius: var(--radius);
 	max-width: max-content;
-	margin-left: 5%;
 	margin-bottom: var(--pad-big);
+	margin-left: auto;
+	margin-right: auto;
 	user-select: none;
 	white-space: nowrap;
 	flex: 0 1 auto;

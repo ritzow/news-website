@@ -40,9 +40,9 @@ public class QR {
 	}
 	
 	public static byte[] toImage(QRCode code) {
-		ByteArrayOutputStream out = new ByteArrayOutputStream();
 		ByteMatrix result = code.getMatrix();
 		var info = new ImageInfo(result.getWidth(), result.getHeight(), 1, false, true, false);
+		ByteArrayOutputStream out = new ByteArrayOutputStream((int)info.getTotalRawBytes());
 		var writer = new PngWriter(out, info);
 		writer.getPixelsWriter().setDeflaterCompLevel(0);
 		writer.getPixelsWriter().setFilterType(FilterType.FILTER_NONE);
