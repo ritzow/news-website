@@ -15,6 +15,7 @@ module net.ritzow.news {
 	requires org.apache.lucene.core;
 	requires org.apache.lucene.queryparser;
 	requires com.google.zxing;
+	requires org.slf4j;
 	requires pngj;
 	/*requires net.imglib2;*/
 	/*requires java.management;*/

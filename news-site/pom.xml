@@ -10,7 +10,7 @@
             <dependency>
                 <groupId>org.eclipse.jetty</groupId>
                 <artifactId>jetty-bom</artifactId>
-                <version>11.0.9</version>
+                <version>11.0.11</version>
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>
@@ -60,11 +60,26 @@
                 <artifactId>maven-compiler-plugin</artifactId>
                 <version>3.10.0</version>
                 <configuration>
-                    <source>18</source>
-                    <target>18</target>
-                    <release>18</release>
+                    <!-- TODO Can't use ECJ until multi-release jar support is fixed 
+                        https://github.com/eclipse-jdt/eclipse.jdt.core/pull/61 -->
+                    <!--<compilerId>eclipse</compilerId>-->
+                    <source>17</source>
+                    <target>17</target>
+                    <release>17</release>
                     <encoding>UTF-8</encoding>
                 </configuration>
+                <dependencies>
+                    <dependency>
+                        <groupId>org.codehaus.plexus</groupId>
+                        <artifactId>plexus-compiler-eclipse</artifactId>
+                        <version>2.12.0</version>
+                    </dependency>
+                    <dependency>
+                        <groupId>org.eclipse.jdt</groupId>
+                        <artifactId>ecj</artifactId>
+                        <version>3.30.0</version>
+                    </dependency>
+                </dependencies>
             </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
@@ -109,20 +124,23 @@
     </build>
     
     <dependencies>
-        <!-- Web Server -->
+        <!-- HTTP/1.1 -->
         <dependency>
             <groupId>org.eclipse.jetty</groupId>
             <artifactId>jetty-server</artifactId>
         </dependency>
-        <!--<dependency>
-            <groupId>org.eclipse.jetty.toolchain</groupId>
-            <artifactId>jetty-jakarta-servlet-api</artifactId>
-            <version>5.0.2</version>
-        </dependency>-->
+
+        <!-- HTTP/2 -->
+        <dependency>
+            <groupId>org.eclipse.jetty</groupId>
+            <artifactId>jetty-alpn-java-server</artifactId>
+        </dependency>
         <dependency>
             <groupId>org.eclipse.jetty.http2</groupId>
             <artifactId>http2-server</artifactId>
         </dependency>
+
+        <!-- HTTP/3 -->
         <dependency>
             <groupId>org.eclipse.jetty.http3</groupId>
             <artifactId>http3-server</artifactId>
@@ -134,15 +152,6 @@
                 </exclusion>
             </exclusions>
         </dependency>
-        <dependency>
-            <!-- For HTTP/2 -->
-            <groupId>org.eclipse.jetty</groupId>
-            <artifactId>jetty-alpn-java-server</artifactId>
-        </dependency>
-        <!--<dependency>
-            <groupId>org.eclipse.jetty</groupId>
-            <artifactId>jetty-jmx</artifactId>
-        </dependency>-->
         
         <!-- Security -->
         <dependency>
@@ -156,13 +165,13 @@
         <dependency>
             <groupId>com.j2html</groupId>
             <artifactId>j2html</artifactId>
-            <version>1.5.0</version>
+            <version>1.6.0</version>
         </dependency>
         <dependency>
             <!-- Parse markdown -->
             <groupId>org.commonmark</groupId>
             <artifactId>commonmark</artifactId>
-            <version>0.18.0</version>
+            <version>0.19.0</version>
         </dependency>
         <dependency>
             <!-- Could use for search functionality in the future -->
@@ -185,18 +194,12 @@
             <artifactId>pngj</artifactId>
             <version>2.1.0</version>
         </dependency>
-        <!--<dependency>
-            <groupId>net.imglib2</groupId>
-            <artifactId>imglib2</artifactId>
-            <version>5.13.0</version>
-        </dependency>-->
 
         <!-- Database -->
         <dependency>
-            <!-- Database connection management -->
             <groupId>com.zaxxer</groupId>
             <artifactId>HikariCP</artifactId>
-            <version>5.0.0</version>
+            <version>5.0.1</version>
         </dependency>
         <dependency>
             <!-- Database (in-memory or file system) -->
@@ -207,17 +210,22 @@
         
         <!-- Logging -->
         <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-api</artifactId>
+            <version>2.0.0-alpha7</version>
+        </dependency>
+        <dependency>
             <!-- Log to stdout -->
             <groupId>org.slf4j</groupId>
             <artifactId>slf4j-simple</artifactId>
-            <version>2.0.0-alpha5</version>
+            <version>2.0.0-alpha7</version>
             <scope>runtime</scope>
         </dependency>
         <dependency>
             <!-- Log OpenJDK messages (but not all of them) to SLF4J -->
             <groupId>org.slf4j</groupId>
             <artifactId>slf4j-jdk-platform-logging</artifactId>
-            <version>2.0.0-alpha5</version>
+            <version>2.0.0-alpha7</version>
             <scope>runtime</scope>
         </dependency>
     </dependencies>
