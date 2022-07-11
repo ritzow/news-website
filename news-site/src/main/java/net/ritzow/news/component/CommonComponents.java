@@ -15,8 +15,9 @@ import static net.ritzow.news.ResponseUtil.contentPath;
 
 public class CommonComponents {
 	private static final BodyTag PAGE_BODY_HTML = body().withId("top").with(
-		named("full-content"),
-		div().withClass("page-separator"),
+		div().withClass("page-centered").with(
+			named("full-content")
+		),
 		footer().withClasses("page-footer").with(
 			/*a().withClasses("left-footer", "foreground").withHref("/shutdown").with(
 				rawHtml("Shutdown")

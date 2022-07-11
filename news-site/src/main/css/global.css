@@ -21,6 +21,8 @@
 	--underline-thickness: 0.1em;
 	--content-box-width: 500px;
 
+	--centered-offset: calc(100vw - 100%);
+
 	/* html element must be sized https://stackoverflow.com/a/7049918/2442171 */
 	height: 100%;
 
@@ -38,23 +40,29 @@ body {
 	flex-flow: column;
 	margin: 0;
 	background-color: var(--bg);
+	min-height: 100%;
+}
+
+.page-centered {
+	margin-left: var(--centered-offset);
+	margin-right: 0;
 }
 
 /* Keep the footer at the bottom of the page */
 
-body > .page-body {
+.page-body {
 	flex: 0 1 auto;
 	width: 100%;
 	display: flex;
 }
 
-body > .page-separator {
+.page-footer {
+	display: flex;
+	align-items: flex-end;
 	flex: 1 1 auto;
-	min-height: 30px;
-}
-
-body > .page-footer {
-	flex: 0 1 auto;
+	position: relative;
+	padding-top: 30px;
+	height: 100%;
 }
 
 /* Foreground elements like the main content and header */
@@ -243,9 +251,10 @@ body > .page-footer {
 }
 
 .right-footer {
+	display: inline-block;
+	margin-left: auto;
 	padding-right: var(--pad);
 	padding-bottom: var(--pad);
-	float: right;
 	border-top-left-radius: var(--radius);
 	font-family: var(--display-font);
 }
