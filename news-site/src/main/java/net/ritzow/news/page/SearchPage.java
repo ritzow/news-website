@@ -5,12 +5,16 @@ import java.io.IOException;
 import java.io.Reader;
 import java.util.Iterator;
 import java.util.Locale;
+import java.util.Objects;
 import java.util.stream.Stream;
 import net.ritzow.news.HttpUser;
 import net.ritzow.news.NewsSite;
 import net.ritzow.news.component.LangSelectComponent;
 import org.apache.lucene.queryparser.classic.ParseException;
 import org.apache.lucene.queryparser.flexible.core.QueryNodeException;
+import org.commonmark.node.Node;
+import org.commonmark.node.Text;
+import org.commonmark.parser.Parser;
 import org.eclipse.jetty.http.HttpMethod;
 import org.eclipse.jetty.http.HttpStatus;
 import org.eclipse.jetty.server.Request;
@@ -45,32 +49,44 @@ public class SearchPage {
 				}		
 			}
 			
-			case POST -> {
+			case POST ->
 				doFormResponse(request,
 					entry(LOGIN_FORM, values -> Login.doLoginForm(request, site, values)),
 					entry(LangSelectComponent.LANG_SELECT_FORM, values -> LangSelectComponent.doLangSelectForm(request, site, values)),
 					entry(Login.LOGGED_IN_FORM, values -> Login.doLoggedInForm(request ,values))
 				);
-			}
 		}
 	}
 
 	private static Stream<DomContent> content(NewsSite site, String query, Locale locale) throws QueryNodeException, IOException, ParseException {
 		return site.cm.search(query, locale, SearchPage::firstSentence)
-			.stream().map(article -> {
-				return div().withClasses("foreground").with(
-					h2(article.title()),
-					p().withText(article.content())
-				);
-			});
+			.stream().map(article -> div().withClasses("foreground").with(
+				h2(article.title()),
+				p().withText(article.content())
+			));
 	}
 
 	private static String firstSentence(Reader reader) {
-		/*var parser = Parser.builder().postProcessor(node -> {
-			return node instanceof Paragraph ? node : null;
-		}).build();
-		var root = parser.parseReader(reader);
-		while(root.)*/
-		return "blah blah";
+		try {
+			var texts = Parser.builder()
+				.build()
+				.parseReader(reader);
+			return Objects.requireNonNullElse(firstText(texts), "");
+		} catch(IOException e) {
+			throw new RuntimeException(e);
+		}
+	}
+	
+	private static String firstText(Node node) {
+		for(var n = node; n != null; n = node.getNext()) {
+			var text = firstText(n.getFirstChild());
+			if(text != null) {
+				return text;
+			}
+			if(n instanceof Text t) {
+				return t.getLiteral();
+			}
+		}
+		return null;
 	}
 }
