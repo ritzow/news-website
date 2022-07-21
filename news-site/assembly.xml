@@ -1,0 +1,16 @@
+<assembly>
+	<id>bundle</id>
+	<formats>
+		<format>dir</format>
+	</formats>
+	<includeBaseDirectory>false</includeBaseDirectory>
+	<dependencySets>
+		<dependencySet>
+			<outputDirectory>/</outputDirectory>
+			<useProjectArtifact>true</useProjectArtifact>
+			<useProjectAttachments>false</useProjectAttachments>
+			<unpack>false</unpack>
+			<scope>runtime</scope>
+		</dependencySet>
+	</dependencySets>
+</assembly>
