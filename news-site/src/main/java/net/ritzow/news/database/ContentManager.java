@@ -20,12 +20,9 @@ import org.apache.lucene.document.IntPoint;
 import org.apache.lucene.document.StoredField;
 import org.apache.lucene.document.TextField;
 import org.apache.lucene.index.*;
-import org.apache.lucene.queryparser.classic.ParseException;
-import org.apache.lucene.queryparser.flexible.core.QueryNodeException;
 import org.apache.lucene.search.BooleanClause.Occur;
 import org.apache.lucene.search.*;
 import org.apache.lucene.store.ByteBuffersDirectory;
-import org.commonmark.parser.Parser;
 
 import static java.util.Map.entry;
 
@@ -245,6 +242,7 @@ public final class ContentManager {
 		try {
 			//Look into NRTManager
 			//https://blog.mikemccandless.com/2011/11/near-real-time-readers-with-lucenes.html
+			//Use NRTCachingDirectory when replacing ByteBuffersDirectory with disk directory
 			indexer = new IndexWriter(new ByteBuffersDirectory(), new IndexWriterConfig(new StandardAnalyzer()));
 			//https://blog.mikemccandless.com/2011/11/near-real-time-readers-with-lucenes.html
 			//TODO applyAllDeletes false can improve performance.
@@ -256,23 +254,19 @@ public final class ContentManager {
 	
 	private static final Pattern WORD_DELIM = Pattern.compile("\\s+");
 	
-	public <T> List<Article<T>> search(String query, Locale lang, Function<Reader, T> content) throws QueryNodeException, IOException, ParseException {
+	public <T> List<Article<T>> search(String query, Locale lang, Function<Reader, T> content) throws IOException {
 		searcher.maybeRefresh();
 		var search = searcher.acquire();
 		try {
-			var builder = new PhraseQuery.Builder();
-			System.out.println(query);
-			WORD_DELIM.splitAsStream(query).forEachOrdered(token -> {
-				System.out.println(token);
-				builder.add(new Term("content", token));
-			});
+			var builder = new PhraseQuery.Builder().setSlop(5);
+			WORD_DELIM.splitAsStream(query).forEachOrdered(token -> builder.add(new Term("content", token)));
 			var query1 = new BooleanQuery.Builder()
 				.add(builder.build(), Occur.MUST)
 				.add(IntPoint.newExactQuery("lang", getLocaleIds().get(lang).intValue()), Occur.MUST)
 				.build(); //new StandardQueryParser(new StandardAnalyzer()).parse(query, "content");
 			TopDocs results = search.search(query1, TopScoreDocCollector.createSharedManager(10, null, 10));
 			List<Article<T>> docs = new ArrayList<>(results.scoreDocs.length);
-			for(var result : results.scoreDocs) {
+			for(final var result : results.scoreDocs) {
 				search.getIndexReader().document(result.doc, new StoredFieldVisitor() {
 					@Override
 					public Status needsField(FieldInfo fieldInfo) {
@@ -281,11 +275,12 @@ public final class ContentManager {
 
 					@Override
 					public void intField(FieldInfo fieldInfo, int value) {
-						try(var db = ContentManager.this.db.getConnection(); var st = db.prepareStatement("SELECT urlname FROM articles WHERE id = ?")) {
+						try(var db = ContentManager.this.db.getConnection(); 
+							var st = db.prepareStatement("SELECT urlname FROM articles WHERE id = ?")) {
 							st.setInt(1, value);
-							var result = st.executeQuery();
-							result.next();
-							getLatestArticle(result.getString(1), lang, content)
+							var query = st.executeQuery();
+							query.next();
+							getLatestArticle(query.getString(1), lang, content)
 								.ifPresent(docs::add);
 						} catch(SQLException e) {
 							throw new RuntimeException(e);
