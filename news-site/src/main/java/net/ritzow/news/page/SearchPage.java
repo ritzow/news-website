@@ -10,8 +10,6 @@ import java.util.stream.Stream;
 import net.ritzow.news.HttpUser;
 import net.ritzow.news.NewsSite;
 import net.ritzow.news.component.LangSelectComponent;
-import org.apache.lucene.queryparser.classic.ParseException;
-import org.apache.lucene.queryparser.flexible.core.QueryNodeException;
 import org.commonmark.node.Node;
 import org.commonmark.node.Text;
 import org.commonmark.parser.Parser;
@@ -36,17 +34,13 @@ public class SearchPage {
 			case GET -> {
 				//TODO handle standard forms
 				String query = request.getParameterMap().get("q")[0];
-				try {
-					var locale = HttpUser.bestLocale(request, site.cm.getSupportedLocales());
-					
-					doDecoratedPage(HttpStatus.OK_200, request, site, locale, 
-						"Search \"" + query + "\"", 
-						main().withClasses("main-box", "foreground")
-							.with(eachStreamed(content(site, query, locale)))
-					);
-				} catch(QueryNodeException | ParseException e) {
-					throw new RuntimeException(e);
-				}		
+				var locale = HttpUser.bestLocale(request, site.cm.getSupportedLocales());
+
+				doDecoratedPage(HttpStatus.OK_200, request, site, locale,
+					"Search \"" + query + "\"",
+					main().withClasses("main-box", "foreground")
+						.with(eachStreamed(content(site, query, locale)))
+				);	
 			}
 			
 			case POST ->
@@ -58,7 +52,7 @@ public class SearchPage {
 		}
 	}
 
-	private static Stream<DomContent> content(NewsSite site, String query, Locale locale) throws QueryNodeException, IOException, ParseException {
+	private static Stream<DomContent> content(NewsSite site, String query, Locale locale) throws IOException {
 		return site.cm.search(query, locale, SearchPage::firstSentence)
 			.stream().map(article -> div().withClasses("foreground").with(
 				h2(article.title()),
