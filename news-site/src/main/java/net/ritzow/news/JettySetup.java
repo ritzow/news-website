@@ -8,7 +8,6 @@ import java.io.IOException;
 import java.net.InetAddress;
 import java.security.KeyStore;
 import java.util.EnumSet;
-import java.util.List;
 import org.eclipse.jetty.alpn.server.ALPNServerConnectionFactory;
 import org.eclipse.jetty.http.CookieCompliance;
 import org.eclipse.jetty.http.HttpCompliance;
@@ -16,8 +15,6 @@ import org.eclipse.jetty.http.HttpCookie.SameSite;
 import org.eclipse.jetty.http.HttpStatus;
 import org.eclipse.jetty.http.UriCompliance;
 import org.eclipse.jetty.http2.server.HTTP2ServerConnectionFactory;
-import org.eclipse.jetty.http3.server.HTTP3ServerConnectionFactory;
-import org.eclipse.jetty.http3.server.HTTP3ServerConnector;
 import org.eclipse.jetty.server.*;
 import org.eclipse.jetty.server.handler.*;
 import org.eclipse.jetty.server.handler.gzip.GzipHandler;
@@ -111,7 +108,6 @@ public class JettySetup {
 		handler.setHttpOnly(true);
 		handler.setSecureRequestOnly(true);
 		handler.setSameSite(SameSite.STRICT);
-		//handler.setSameSite(SameSite.NONE); /* TODO test, is this correct or a vulnerability? will allow other sites to access sensitive info */
 		handler.setSessionTrackingModes(EnumSet.of(SessionTrackingMode.COOKIE));
 		handler.setHandler(inner);
 		return handler;
@@ -126,7 +122,8 @@ public class JettySetup {
 		return http11Insecure;
 	}
 	
-	private static ServerConnector httpSslConnector(Server server, InetAddress bind, HttpConfiguration config, SslContextFactory.Server sslContext) {
+	private static ServerConnector httpSslConnector(Server server, InetAddress bind, 
+		HttpConfiguration config, SslContextFactory.Server sslContext) {
 		var http1 = new HttpConnectionFactory(new HttpConfiguration(config));
 		var http2 = new HTTP2ServerConnectionFactory(new HttpConfiguration(config));
 		//var http3 = new HTTP3ServerConnectionFactory(config);
@@ -141,7 +138,7 @@ public class JettySetup {
 		return httpSecure;
 	}
 	
-	private static Connector http3Connector(Server server, InetAddress bind,
+/*	private static Connector http3Connector(Server server, InetAddress bind,
 		HttpConfiguration config, SslContextFactory.Server sslContextFactory) {
 		HTTP3ServerConnectionFactory http3 = new HTTP3ServerConnectionFactory(config);
 		//http3.getHTTP3Configuration().setStreamIdleTimeout(15000);
@@ -152,7 +149,7 @@ public class JettySetup {
 		connector.getQuicConfiguration().setProtocols(List.of("h3"));
 		connector.setHost(bind.getHostAddress());
 		return connector;
-	}
+	}*/
 	
 	private static SslContextFactory.Server sslContext(KeyStore keyStorePkcs12, String keyStorePassword) {
 		SslContextFactory.Server sslFactory = new SslContextFactory.Server();
@@ -160,6 +157,10 @@ public class JettySetup {
 		sslFactory.setKeyStore(keyStorePkcs12);
 		//sslFactory.setKeyStore(Certs.loadPkcs12(keyStorePkcs12, keyStorePassword.toCharArray()));
 		sslFactory.setKeyStorePassword(keyStorePassword);
+//		sslFactory.setProvider("NewsSite");
+//		ServiceLoader.loadInstalled(SecurityProvider.class);
+//		sslFactory.setKeyManagerFactoryAlgorithm(SecurityProvider.KEY_MANAGER_ALGORITHM);
+		
 		//sslFactory.setKeyStoreResource(new PathResource(keyStorePkcs12));
 		
 //		class SslCtx extends SslContextFactory {

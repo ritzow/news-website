@@ -1,7 +1,7 @@
 module net.ritzow.news {
 	requires org.eclipse.jetty.server;
 	requires org.eclipse.jetty.http2.server;
-	requires org.eclipse.jetty.http3.server;
+	/*requires org.eclipse.jetty.http3.server;*/
 	requires org.eclipse.jetty.alpn.server;
 	requires org.bouncycastle.pkix;
 	requires org.bouncycastle.util;
