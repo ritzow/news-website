@@ -326,10 +326,10 @@ public final class ContentManager {
 		try(var db = this.db.getConnection()) {
 			try(var st = db.prepareStatement("INSERT INTO locales (code) VALUES (?)")) {
 				for(Locale locale : List.of(
-					Locale.forLanguageTag("en-US"),
-					Locale.forLanguageTag("es"),
-					Locale.forLanguageTag("ru"),
-					Locale.forLanguageTag("zh")
+					Locale.of("en","US"),
+					Locale.of("es"),
+					Locale.of("ru"),
+					Locale.of("zh")
 				)) {
 					st.setString(1, locale.toLanguageTag());
 					st.addBatch();
