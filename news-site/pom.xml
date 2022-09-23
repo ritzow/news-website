@@ -3,6 +3,12 @@
     <groupId>net.ritzow</groupId>
     <artifactId>news-site-app</artifactId>
     <version>1.0-SNAPSHOT</version>
+    <properties>
+        <maven.compiler.source>19</maven.compiler.source>
+        <maven.compiler.target>19</maven.compiler.target>
+        <maven.compiler.release>19</maven.compiler.release>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    </properties>
     <packaging>jar</packaging>
     
     <dependencyManagement>
@@ -63,10 +69,6 @@
                     <!-- TODO Can't use ECJ until multi-release jar support is fixed 
                         https://github.com/eclipse-jdt/eclipse.jdt.core/pull/61 -->
                     <!--<compilerId>eclipse</compilerId>-->
-                    <source>17</source>
-                    <target>17</target>
-                    <release>17</release>
-                    <encoding>UTF-8</encoding>
                 </configuration>
                 <dependencies>
                     <dependency>
@@ -85,9 +87,6 @@
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-resources-plugin</artifactId>
                 <version>3.2.0</version>
-                <configuration>
-                    <encoding>UTF-8</encoding>
-                </configuration>
             </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
