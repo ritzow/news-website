@@ -36,11 +36,12 @@ public class CachingImmutableRequestConsumer<T> implements ContextRequestConsume
 			throw new RuntimeException("Too many path components " + request.getHttpURI().getPath());
 		}
 
-		var response = request.getResponse();
-
-		byte[] bytes = load();
-
-		doResponse(response, bytes, cacheFor, src.mimeType());
+		try {
+			byte[] bytes = load();
+			doResponse(request.getResponse(), bytes, cacheFor, src.mimeType());
+		} catch(IOException e) {
+			throw new RuntimeException("Could not load resource " + src.toString(), e);
+		}
 	}
 
 	public static void doResponse(Response response, byte[] bytes, Duration cacheFor, String contentType) throws IOException {
