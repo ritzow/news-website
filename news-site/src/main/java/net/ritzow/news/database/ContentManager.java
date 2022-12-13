@@ -6,12 +6,10 @@ import io.permazen.PermazenFactory;
 import io.permazen.core.Database;
 import io.permazen.kv.mvstore.MVStoreAtomicKVStore;
 import io.permazen.kv.mvstore.MVStoreKVDatabase;
-import io.permazen.tuple.Tuple;
 import io.permazen.tuple.Tuple2;
 import io.permazen.util.Bounds;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
-import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.io.Reader;
 import java.io.StringReader;
@@ -28,6 +26,8 @@ import java.sql.Types;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
@@ -38,7 +38,7 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.function.Function;
 import java.util.regex.Pattern;
-import net.ritzow.news.CharsetUtil;
+import java.util.stream.Collectors;
 import net.ritzow.news.Cryptography;
 import net.ritzow.news.database.model.LocaleType;
 import net.ritzow.news.database.model.NewsAccount;
@@ -65,7 +65,6 @@ import org.apache.lucene.search.TopDocs;
 import org.apache.lucene.search.TopScoreDocCollector;
 import org.apache.lucene.store.ByteBuffersDirectory;
 import org.h2.mvstore.MVStore.Builder;
-import org.h2.mvstore.OffHeapStore;
 
 import static java.util.Map.entry;
 
@@ -86,8 +85,8 @@ public final class ContentManager {
 		MVStoreAtomicKVStore implimpl = new MVStoreAtomicKVStore();
 		implimpl.setBuilder(new Builder()
 				/* In-memory database */
-				.fileStore(new OffHeapStore())
-			/*.fileName("target/database.permazen")*/);
+				/*.fileStore(new OffHeapStore())*/
+			.fileName("target/database.permazen"));
 		var impl = new MVStoreKVDatabase();
 		impl.setKVStore(implimpl);
 
@@ -118,6 +117,7 @@ public final class ContentManager {
 	}
 	
 	public void shutdown() throws SQLException {
+		pz.getDatabase().getKVDatabase().stop();
 		try(var db = this.db.getConnection()) {
 			db.prepareStatement("SHUTDOWN").execute();
 		}
@@ -409,20 +409,25 @@ public final class ContentManager {
 	public record Article3(String urlname, String title) {}
 	
 	public List<Article3> getArticlesForLocale(Locale locale) {
-		try(var db = this.db.getConnection()) {
-			try(var st = db.prepareCall("call get_all_articles_for_locale(?)")) {
-				st.setString(1, locale.toLanguageTag());
-				ResultSet result = st.executeQuery();
-				List<Article3> articles = new ArrayList<>();
-				while(result.next()) {
-					Blob title = result.getBlob("title");
-					articles.add(new Article3(result.getString("urlname"), readBlobUtf8(title)));
-					title.free();
-				}
-				return articles;
-			}
-		} catch(SQLException | IOException e) {
-			throw new RuntimeException(e);
+
+		var tx = pz.createTransaction();
+		try {
+			//TODO only get latest of each article!
+			return Optional.ofNullable(tx.queryIndex(NewsContent.class, "locale", Locale.class)
+				.withValueBounds(Bounds.eq(locale))
+				.asMap()
+				.firstEntry())
+				.stream()
+				.map(Entry::getValue)
+				.flatMap(Collection::stream)
+				.collect(Collectors.groupingBy(NewsContent::getArticle, Collectors.maxBy(Comparator.comparing(NewsContent::getPublishTime))))
+				.values()
+				.stream()
+				.flatMap(Optional::stream)
+				.map(newsContent -> new Article3(newsContent.getArticle().getUrlName(), newsContent.getTitle()))
+				.toList();
+		} finally {
+			tx.rollback();
 		}
 	}
 	
@@ -457,77 +462,67 @@ public final class ContentManager {
 	}
 	
 	public List<Locale> getArticleLocales(String urlname) {
-		try(var db = this.db.getConnection()) {
-			try(var st = db.prepareCall("call get_article_langs(?)")) {
-				st.setString(1, urlname);
-				try(ResultSet result = st.executeQuery()) {
-					List<Locale> locales = new ArrayList<>(4);
-					while(result.next()) {
-						locales.add(Locale.forLanguageTag(result.getString(1)));
-					}
-					return locales;
-				}
-			}
-		} catch(SQLException e) {
-			throw new RuntimeException(e);
+		
+		var tx = pz.createTransaction();
+		try {
+			return Optional.ofNullable(tx.queryIndex(NewsArticle.class, "urlName", String.class)
+					.withValueBounds(Bounds.eq(urlname))
+					.asMap()
+					.firstEntry())
+				.stream()
+				.map(Entry::getValue)
+				.flatMap(Collection::stream)
+				.findFirst()
+				.map(NewsArticle::getContent)
+				.stream()
+				.flatMap(List::stream)
+				.map(NewsContent::getLocale)
+				.distinct()
+				.toList();	
+		} finally {
+			tx.rollback();
 		}
 	}
 	
 	public void newArticle(String urlName, Locale locale, String title, String markdown) {
 		var tx = pz.createTransaction();
-		
-		var content = tx.create(NewsContent.class);
-		
-		content.setTitle(title);
-		content.setMarkdown(markdown);
-		content.setLocale(locale);
-		
-		var article = tx.queryIndex(NewsArticle.class, "urlName", String.class)
-			.withValueBounds(Bounds.eq(urlName))
-			.asSet()
-			.stream()
-			.findFirst()
-			.map(Tuple2::getValue2)
-			.orElse(null);
-		
-		if(article == null) {
-			article = tx.create(NewsArticle.class);
-			article.setUrlName(urlName);
-			article.setOriginalLocale(locale);
-		}
+		try {
+			var content = tx.create(NewsContent.class);
 
-		article.getContent().add(content);
-		
-		System.out.println(article);
-		
-		try(var db = this.db.getConnection()) {
-			try(var st = db.prepareCall("call new_article(?, ?, ?, ?, ?)")) {
-				st.setString(1, urlName);
-				st.setString(2, locale.toLanguageTag());
-				byte[] data = title.getBytes(StandardCharsets.UTF_8);
-				st.setBlob(3, new ByteArrayInputStream(data), data.length);
-				data = markdown.getBytes(StandardCharsets.UTF_8);
-				st.setBlob(4, new ByteArrayInputStream(data), data.length);
-				st.registerOutParameter(5, Types.INTEGER);
-				st.execute();
+			content.setTitle(title);
+			content.setMarkdown(markdown);
+			content.setLocale(locale);
+			content.setPublishTime(Instant.now());
 
-				int articleID = st.getInt(5);
+			var article = tx.queryIndex(NewsArticle.class, "urlName", String.class)
+				.withValueBounds(Bounds.eq(urlName))
+				.asSet()
+				.stream()
+				.findFirst()
+				.map(Tuple2::getValue2)
+				.orElse(null);
 
-				//TODO update existing document if this is a new revision
-
-				Document doc = new Document();
-				doc.add(new StoredField("id", articleID));
-				doc.add(new IntPoint("lang", getLocaleIds().get(locale)));
-				doc.add(new TextField("title", title, Store.NO));
-				//doc.add(new TextField("content", new MarkdownTokenStream(Parser.builder().build().parse(markdown))));
-				doc.add(new TextField("content", markdown, Store.NO));
-				indexer.addDocument(doc);
+			if(article == null) {
+				article = tx.create(NewsArticle.class);
+				article.setUrlName(urlName);
+				article.setOriginalLocale(locale);
 			}
-		} catch(SQLException | IOException e) {
+
+			content.setArticle(article);
+			article.getContent().add(content);
+
+			Document doc = new Document();
+			doc.add(new StoredField("id", article.getObjId().asLong()));
+			doc.add(new IntPoint("lang", getLocaleIds().get(locale)));
+			doc.add(new TextField("title", title, Store.NO));
+			//doc.add(new TextField("content", new MarkdownTokenStream(Parser.builder().build().parse(markdown))));
+			doc.add(new TextField("content", markdown, Store.NO));
+			indexer.addDocument(doc);
+			tx.commit();
+		} catch(IOException e) {
+			tx.rollback();
 			throw new RuntimeException(e);
 		}
-		
-		tx.commit();
 	}
 	
 	/* Does not clear password parameter utf8 */
@@ -568,11 +563,13 @@ public final class ContentManager {
 	public <T> Optional<Article<T>> getLatestArticle(String urlName, Locale locale, Function<Reader, T> transform) {
 		var tx = pz.createTransaction();
 		try {
-			return tx.queryIndex(NewsArticle.class, "urlName", String.class)
-				.withValueBounds(Bounds.eq(urlName))
-				.asSet()
+			return Optional.ofNullable(tx.queryIndex(NewsArticle.class, "urlName", String.class)
+					.withValueBounds(Bounds.eq(urlName))
+					.asMap()
+					.firstEntry())
 				.stream()
-				.map(Tuple2::getValue2)
+				.map(Entry::getValue)
+				.flatMap(Collection::stream)
 				.findFirst()
 				.map(a -> {
 					/* Find an article in the same language */
@@ -592,33 +589,6 @@ public final class ContentManager {
 			throw e;
 		}
 	}
-	
-	/* Returned reader must be closed */
-//	public <T> Optional<Article<T>> getLatestArticle(String urlName, Locale locale, Function<Reader, T> transform) {
-//		try(var db = this.db.getConnection()) {
-//			try(var st = db.prepareCall("call get_latest_article(?, ?)")) {
-//				st.setString(1, urlName);
-//				st.setString(2, locale.toLanguageTag());
-//				try(ResultSet result = st.executeQuery()) {
-//					if(result.next()) {
-//						Blob blob = result.getBlob("title");
-//						String title = readBlobUtf8(blob);
-//						blob.free();
-//						blob = result.getBlob("markdown");
-//						var content = transform.apply(new InputStreamReader(blob.getBinaryStream(),
-//							CharsetUtil.decoder(StandardCharsets.UTF_8)));
-//						blob.free();
-//						int articleId = result.getInt("id");
-//						return Optional.of(new Article<>(title, content, articleId));
-//					} else {
-//						return Optional.empty();
-//					}
-//				}
-//			}
-//		} catch(SQLException | IOException e) {
-//			throw new RuntimeException(e);
-//		}
-//	}
 	
 	private static String readBlobUtf8(Blob blob) throws SQLException, IOException {
 		if(blob.length() > Integer.MAX_VALUE) {
