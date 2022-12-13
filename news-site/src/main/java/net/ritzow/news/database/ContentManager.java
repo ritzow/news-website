@@ -23,6 +23,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.sql.Types;
+import java.text.Collator;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -425,6 +426,7 @@ public final class ContentManager {
 				.stream()
 				.flatMap(Optional::stream)
 				.map(newsContent -> new Article3(newsContent.getArticle().getUrlName(), newsContent.getTitle()))
+				.sorted(Comparator.comparing(Article3::title, Collator.getInstance(locale)))
 				.toList();
 		} finally {
 			tx.rollback();
