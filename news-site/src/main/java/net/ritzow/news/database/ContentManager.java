@@ -1,40 +1,107 @@
 package net.ritzow.news.database;
 
 import com.zaxxer.hikari.HikariDataSource;
-import java.io.*;
+import io.permazen.Permazen;
+import io.permazen.PermazenFactory;
+import io.permazen.core.Database;
+import io.permazen.kv.mvstore.MVStoreAtomicKVStore;
+import io.permazen.kv.mvstore.MVStoreKVDatabase;
+import io.permazen.tuple.Tuple;
+import io.permazen.tuple.Tuple2;
+import io.permazen.util.Bounds;
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.PrintWriter;
+import java.io.Reader;
+import java.io.StringReader;
 import java.nio.charset.StandardCharsets;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
-import java.sql.*;
+import java.sql.BatchUpdateException;
+import java.sql.Blob;
+import java.sql.JDBCType;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
+import java.sql.Types;
 import java.time.Instant;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Optional;
+import java.util.Properties;
 import java.util.function.Function;
 import java.util.regex.Pattern;
 import net.ritzow.news.CharsetUtil;
 import net.ritzow.news.Cryptography;
+import net.ritzow.news.database.model.LocaleType;
+import net.ritzow.news.database.model.NewsAccount;
+import net.ritzow.news.database.model.NewsArticle;
+import net.ritzow.news.database.model.NewsComment;
+import net.ritzow.news.database.model.NewsContent;
 import org.apache.lucene.analysis.standard.StandardAnalyzer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field.Store;
 import org.apache.lucene.document.IntPoint;
 import org.apache.lucene.document.StoredField;
 import org.apache.lucene.document.TextField;
-import org.apache.lucene.index.*;
+import org.apache.lucene.index.FieldInfo;
+import org.apache.lucene.index.IndexWriter;
+import org.apache.lucene.index.IndexWriterConfig;
+import org.apache.lucene.index.StoredFieldVisitor;
+import org.apache.lucene.index.Term;
 import org.apache.lucene.search.BooleanClause.Occur;
-import org.apache.lucene.search.*;
+import org.apache.lucene.search.BooleanQuery;
+import org.apache.lucene.search.PhraseQuery;
+import org.apache.lucene.search.SearcherFactory;
+import org.apache.lucene.search.SearcherManager;
+import org.apache.lucene.search.TopDocs;
+import org.apache.lucene.search.TopScoreDocCollector;
 import org.apache.lucene.store.ByteBuffersDirectory;
+import org.h2.mvstore.MVStore.Builder;
+import org.h2.mvstore.OffHeapStore;
 
 import static java.util.Map.entry;
 
 public final class ContentManager {
 	
 	private final HikariDataSource db;
+	
+	private final Permazen pz;
+	
+//	private final PersistentEntityStore store;
 
 	public static ContentManager ofMemoryDatabase() throws SQLException {
 		return new ContentManager();
 	}
 	
 	private ContentManager() throws SQLException {
+
+		MVStoreAtomicKVStore implimpl = new MVStoreAtomicKVStore();
+		implimpl.setBuilder(new Builder()
+				/* In-memory database */
+				.fileStore(new OffHeapStore())
+			/*.fileName("target/database.permazen")*/);
+		var impl = new MVStoreKVDatabase();
+		impl.setKVStore(implimpl);
+
+		impl.start();
+		
+		var db = new Database(impl);
+		
+		db.getFieldTypeRegistry().add(new LocaleType());
+
+		pz = new PermazenFactory()
+			.setDatabase(db)
+			.setModelClasses(NewsArticle.class, NewsAccount.class, NewsContent.class, NewsComment.class)
+			.newPermazen();
+		
 		HikariDataSource pool = new HikariDataSource();
 		/* TODO log to SLF4J??? disable? */
 		pool.setLogWriter(new PrintWriter(System.err));
@@ -407,6 +474,32 @@ public final class ContentManager {
 	}
 	
 	public void newArticle(String urlName, Locale locale, String title, String markdown) {
+		var tx = pz.createTransaction();
+		
+		var content = tx.create(NewsContent.class);
+		
+		content.setTitle(title);
+		content.setMarkdown(markdown);
+		content.setLocale(locale);
+		
+		var article = tx.queryIndex(NewsArticle.class, "urlName", String.class)
+			.withValueBounds(Bounds.eq(urlName))
+			.asSet()
+			.stream()
+			.findFirst()
+			.map(Tuple2::getValue2)
+			.orElse(null);
+		
+		if(article == null) {
+			article = tx.create(NewsArticle.class);
+			article.setUrlName(urlName);
+			article.setOriginalLocale(locale);
+		}
+
+		article.getContent().add(content);
+		
+		System.out.println(article);
+		
 		try(var db = this.db.getConnection()) {
 			try(var st = db.prepareCall("call new_article(?, ?, ?, ?, ?)")) {
 				st.setString(1, urlName);
@@ -417,9 +510,9 @@ public final class ContentManager {
 				st.setBlob(4, new ByteArrayInputStream(data), data.length);
 				st.registerOutParameter(5, Types.INTEGER);
 				st.execute();
-				
+
 				int articleID = st.getInt(5);
-				
+
 				//TODO update existing document if this is a new revision
 
 				Document doc = new Document();
@@ -433,6 +526,8 @@ public final class ContentManager {
 		} catch(SQLException | IOException e) {
 			throw new RuntimeException(e);
 		}
+		
+		tx.commit();
 	}
 	
 	/* Does not clear password parameter utf8 */
@@ -470,32 +565,60 @@ public final class ContentManager {
 
 	public record Article<T>(String title, T content, int id) {}
 	
-	/* Returned reader must be closed */
 	public <T> Optional<Article<T>> getLatestArticle(String urlName, Locale locale, Function<Reader, T> transform) {
-		try(var db = this.db.getConnection()) {
-			try(var st = db.prepareCall("call get_latest_article(?, ?)")) {
-				st.setString(1, urlName);
-				st.setString(2, locale.toLanguageTag());
-				try(ResultSet result = st.executeQuery()) {
-					if(result.next()) {
-						Blob blob = result.getBlob("title");
-						String title = readBlobUtf8(blob);
-						blob.free();
-						blob = result.getBlob("markdown");
-						var content = transform.apply(new InputStreamReader(blob.getBinaryStream(),
-							CharsetUtil.decoder(StandardCharsets.UTF_8)));
-						blob.free();
-						int articleId = result.getInt("id");
-						return Optional.of(new Article<>(title, content, articleId));
-					} else {
-						return Optional.empty();
+		var tx = pz.createTransaction();
+		try {
+			return tx.queryIndex(NewsArticle.class, "urlName", String.class)
+				.withValueBounds(Bounds.eq(urlName))
+				.asSet()
+				.stream()
+				.map(Tuple2::getValue2)
+				.findFirst()
+				.map(a -> {
+					/* Find an article in the same language */
+					List<NewsContent> content = a.getContent();
+					var it = content.listIterator(content.size());
+					while(it.hasPrevious()) {
+						var c = it.previous();
+						//TODO take a list of locales and search in order.
+						if(c.getLocale().equals(locale)) {
+							return new Article<>(c.getTitle(), transform.apply(new StringReader(c.getMarkdown())), 0);
+						}
 					}
-				}
-			}
-		} catch(SQLException | IOException e) {
-			throw new RuntimeException(e);
+					return null;
+				});
+		} catch(RuntimeException e) {
+			tx.rollback();
+			throw e;
 		}
 	}
+	
+	/* Returned reader must be closed */
+//	public <T> Optional<Article<T>> getLatestArticle(String urlName, Locale locale, Function<Reader, T> transform) {
+//		try(var db = this.db.getConnection()) {
+//			try(var st = db.prepareCall("call get_latest_article(?, ?)")) {
+//				st.setString(1, urlName);
+//				st.setString(2, locale.toLanguageTag());
+//				try(ResultSet result = st.executeQuery()) {
+//					if(result.next()) {
+//						Blob blob = result.getBlob("title");
+//						String title = readBlobUtf8(blob);
+//						blob.free();
+//						blob = result.getBlob("markdown");
+//						var content = transform.apply(new InputStreamReader(blob.getBinaryStream(),
+//							CharsetUtil.decoder(StandardCharsets.UTF_8)));
+//						blob.free();
+//						int articleId = result.getInt("id");
+//						return Optional.of(new Article<>(title, content, articleId));
+//					} else {
+//						return Optional.empty();
+//					}
+//				}
+//			}
+//		} catch(SQLException | IOException e) {
+//			throw new RuntimeException(e);
+//		}
+//	}
 	
 	private static String readBlobUtf8(Blob blob) throws SQLException, IOException {
 		if(blob.length() > Integer.MAX_VALUE) {
