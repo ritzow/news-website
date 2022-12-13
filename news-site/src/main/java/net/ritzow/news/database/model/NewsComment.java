@@ -1,11 +1,14 @@
 package net.ritzow.news.database.model;
 
+import io.permazen.JObject;
+import io.permazen.annotation.JField;
 import io.permazen.annotation.PermazenType;
 import java.time.Instant;
 import java.util.List;
 
 @PermazenType
-public abstract class NewsComment {
+public abstract class NewsComment implements JObject {
+	@JField(indexed = true) //TODO create composite index with postTime
 	public abstract NewsArticle getArticle();
 	public abstract void setArticle(NewsArticle article);
 	public abstract NewsAccount getAuthor();

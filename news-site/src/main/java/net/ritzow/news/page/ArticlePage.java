@@ -96,7 +96,7 @@ public class ArticlePage {
 					each(
 						generateArticlePage(articleLocale, mainLocale, article.orElseThrow(), urlname),
 						HttpUser.getExistingSession(request).flatMap(SessionData::user).map(ArticlePage::newCommentBox).orElse(null),
-						eachStreamed(site.cm.listCommentsNewestFirst(article.orElseThrow().id()).stream().map(comment -> commentBox(mainLocale, comment)))
+						eachStreamed(site.cm.listCommentsNewestFirst(urlname).stream().map(comment -> commentBox(mainLocale, comment)))
 					)
 				);
 			}
@@ -132,14 +132,13 @@ public class ArticlePage {
 			}
 			
 			String urlname = path.next();
-			int id = site.cm.newComment(site.cm.getArticleId(urlname), site.cm.getUserId(username), 
-				Instant.now(), (String)(values.apply(NEW_COMMENT_CONTENT_NAME).orElseThrow()));
-			return request.getHttpURI().getPathQuery() + "#" + commentIdStr(id);
+			return request.getHttpURI().getPathQuery() + "#" + 
+				commentIdStr(site.cm.newComment(urlname, username, Instant.now(), (String)(values.apply(NEW_COMMENT_CONTENT_NAME).orElseThrow())).orElseThrow());
 		}
 		return request.getHttpURI().getPathQuery();
 	}
 	
-	private static String commentIdStr(int commentId) {
+	private static String commentIdStr(long commentId) {
 		return "comment-" + commentId;
 	}
 	

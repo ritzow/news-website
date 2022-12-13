@@ -7,7 +7,6 @@ import java.nio.ByteBuffer;
 import java.nio.CharBuffer;
 import java.nio.charset.StandardCharsets;
 import java.security.KeyStore;
-import java.sql.SQLException;
 import java.text.NumberFormat;
 import java.time.Duration;
 import java.time.ZonedDateTime;
@@ -18,7 +17,13 @@ import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
 import net.ritzow.news.database.ContentManager;
-import net.ritzow.news.page.*;
+import net.ritzow.news.page.ArticlePage;
+import net.ritzow.news.page.ErrorPages;
+import net.ritzow.news.page.ExceptionPage;
+import net.ritzow.news.page.MainPage;
+import net.ritzow.news.page.SearchPage;
+import net.ritzow.news.page.SessionPage;
+import net.ritzow.news.page.ShutdownPage;
 import net.ritzow.news.response.CachingImmutableRequestConsumer;
 import net.ritzow.news.response.ContentSource;
 import net.ritzow.news.response.NamedResourceConsumer;
@@ -78,8 +83,7 @@ public final class NewsSite {
 			)
 		);
 	
-	private NewsSite(boolean requireSni, KeyStore keyStore, String keyStorePassword, Set<String> peers, InetAddress... bind) throws
-		SQLException {
+	private NewsSite(boolean requireSni, KeyStore keyStore, String keyStorePassword, Set<String> peers, InetAddress... bind) throws Exception {
 		cm = ContentManager.ofMemoryDatabase();
 		ContentUtil.genArticles(cm);
 		translator = Translator.ofProperties(properties("/lang/welcome.properties"));
