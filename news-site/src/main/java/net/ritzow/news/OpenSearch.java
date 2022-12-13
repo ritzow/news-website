@@ -3,13 +3,11 @@ package net.ritzow.news;
 import java.io.StringWriter;
 import javax.xml.parsers.DocumentBuilderFactory;
 import javax.xml.parsers.ParserConfigurationException;
-import javax.xml.transform.OutputKeys;
 import javax.xml.transform.TransformerException;
 import javax.xml.transform.TransformerFactory;
 import javax.xml.transform.dom.DOMSource;
 import javax.xml.transform.stream.StreamResult;
 import org.eclipse.jetty.http.HttpURI;
-import org.slf4j.LoggerFactory;
 import org.w3c.dom.Document;
 
 import static net.ritzow.news.ResponseUtil.contentPath;
@@ -63,7 +61,7 @@ public class OpenSearch {
 		try {
 			StringWriter writer = new StringWriter(64);
 			var transform = TransformerFactory.newInstance().newTransformer();
-			transform.setOutputProperty(OutputKeys.INDENT, "true");
+			//transform.setOutputProperty(OutputKeys.INDENT, "true");
 			transform.transform(new DOMSource(doc), new StreamResult(writer));
 			return writer.toString();
 		} catch(TransformerException e) {

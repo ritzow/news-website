@@ -8,6 +8,7 @@ import java.io.IOException;
 import java.net.InetAddress;
 import java.security.KeyStore;
 import java.util.EnumSet;
+import java.util.List;
 import org.eclipse.jetty.alpn.server.ALPNServerConnectionFactory;
 import org.eclipse.jetty.http.CookieCompliance;
 import org.eclipse.jetty.http.HttpCompliance;
@@ -15,8 +16,23 @@ import org.eclipse.jetty.http.HttpCookie.SameSite;
 import org.eclipse.jetty.http.HttpStatus;
 import org.eclipse.jetty.http.UriCompliance;
 import org.eclipse.jetty.http2.server.HTTP2ServerConnectionFactory;
-import org.eclipse.jetty.server.*;
-import org.eclipse.jetty.server.handler.*;
+import org.eclipse.jetty.http3.server.HTTP3ServerConnectionFactory;
+import org.eclipse.jetty.http3.server.HTTP3ServerConnector;
+import org.eclipse.jetty.server.Connector;
+import org.eclipse.jetty.server.Handler;
+import org.eclipse.jetty.server.HttpConfiguration;
+import org.eclipse.jetty.server.HttpConnectionFactory;
+import org.eclipse.jetty.server.Request;
+import org.eclipse.jetty.server.Response;
+import org.eclipse.jetty.server.SecureRequestCustomizer;
+import org.eclipse.jetty.server.Server;
+import org.eclipse.jetty.server.ServerConnector;
+import org.eclipse.jetty.server.SslConnectionFactory;
+import org.eclipse.jetty.server.handler.AbstractHandler;
+import org.eclipse.jetty.server.handler.ErrorHandler;
+import org.eclipse.jetty.server.handler.RequestLogHandler;
+import org.eclipse.jetty.server.handler.SecuredRedirectHandler;
+import org.eclipse.jetty.server.handler.StatisticsHandler;
 import org.eclipse.jetty.server.handler.gzip.GzipHandler;
 import org.eclipse.jetty.server.session.DefaultSessionIdManager;
 import org.eclipse.jetty.server.session.SessionHandler;
@@ -51,6 +67,7 @@ public class JettySetup {
 		for(var addr : bind) {
 			server.addConnector(httpPlaintextConnector(server, addr, httpConfig(requireSni)));
 			server.addConnector(httpSslConnector(server, addr, httpConfig(requireSni), sslContextFactory));
+			//server.addConnector(new HTTP3ServerConnector(server, sslContextFactory, new HTTP3ServerConnectionFactory(httpConfig(requireSni))));
 			//server.addConnector(http3Connector(server, addr, httpConfig(requireSni), sslContextFactory));
 		}
 
@@ -130,7 +147,7 @@ public class JettySetup {
 		var alpn = new ALPNServerConnectionFactory("h3", "h2", "http/1.1");
 		//alpn.setDefaultProtocol("h3");
 		//alpn.setDefaultProtocol("http/1.1");
-		alpn.setDefaultProtocol("h2");
+		//alpn.setDefaultProtocol("h2");
 		var ssl = new SslConnectionFactory(sslContext, alpn.getProtocol());
 		/* Handlers are found using string lookups in the ConnectionFactory list of the ServerConnector */
 		@SuppressWarnings("all") var httpSecure = new ServerConnector(server, ssl, alpn, /*http3,*/ http2, http1);
@@ -138,7 +155,7 @@ public class JettySetup {
 		return httpSecure;
 	}
 	
-/*	private static Connector http3Connector(Server server, InetAddress bind,
+	private static Connector http3Connector(Server server, InetAddress bind,
 		HttpConfiguration config, SslContextFactory.Server sslContextFactory) {
 		HTTP3ServerConnectionFactory http3 = new HTTP3ServerConnectionFactory(config);
 		//http3.getHTTP3Configuration().setStreamIdleTimeout(15000);
@@ -149,7 +166,7 @@ public class JettySetup {
 		connector.getQuicConfiguration().setProtocols(List.of("h3"));
 		connector.setHost(bind.getHostAddress());
 		return connector;
-	}*/
+	}
 	
 	private static SslContextFactory.Server sslContext(KeyStore keyStorePkcs12, String keyStorePassword) {
 		SslContextFactory.Server sslFactory = new SslContextFactory.Server();

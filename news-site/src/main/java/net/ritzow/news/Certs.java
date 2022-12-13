@@ -34,8 +34,13 @@ import org.bouncycastle.openssl.jcajce.JcaPEMKeyConverter;
 import org.bouncycastle.operator.DefaultDigestAlgorithmIdentifierFinder;
 import org.bouncycastle.operator.OperatorCreationException;
 import org.bouncycastle.operator.bc.BcRSAContentSignerBuilder;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class Certs {
+	
+	private static final Logger LOG = LoggerFactory.getLogger(Certs.class);
+	
 	public static KeyStore loadPkcs12(Path p12, char[] password) 
 			throws KeyStoreException, IOException, CertificateException, NoSuchAlgorithmException {
 		var ks = KeyStore.getInstance("pkcs12");
@@ -57,7 +62,7 @@ public class Certs {
 	}
 
 	//TODO allow multiple hostnames
-	public static KeyStore selfSigned(String host, String org, char[] password) throws IOException {
+	public static KeyStore selfSigned(GeneralNames subjectAlternativeNames, String org, char[] password) throws IOException {
 		try {
 			var gen = new RSAKeyPairGenerator();
 			var seed = MessageDigest.getInstance("SHA256");
@@ -86,31 +91,33 @@ public class Certs {
 
 			//TODO make subject match issuer (self-signed)
 			var issuer = new X500Name(new RDN[] {segment("C", "US"), segment("O", org)});
-			
 			var sigAlgId = new AlgorithmIdentifier(PKCSObjectIdentifiers.sha256WithRSAEncryption);
 			var signer = new BcRSAContentSignerBuilder(sigAlgId, 
 				new AlgorithmIdentifier(new DefaultDigestAlgorithmIdentifierFinder().find(sigAlgId).getAlgorithm()))
+				/* Self-signed because it uses the same key for signing and subject public key */
 				.build(privateKey);
 			
 			MessageDigest serialHash = MessageDigest.getInstance("SHA256");
 			serialHash.update(passwordBytes);
-			serialHash.update(host.getBytes(StandardCharsets.UTF_8));
 			serialHash.update(org.getBytes(StandardCharsets.UTF_8));
 			serialHash.update(longToBytes(from.toEpochMilli()));
 			BigInteger serial = new BigInteger(1, serialHash.digest());
-				
+
+			LOG.atInfo()
+				.addKeyValue("serial", serial)
+				.log("Generated self-signed certificate serial number");
+			
 			var cert = new X509v3CertificateBuilder(
 				issuer,
 				serial,
 				Time.from(from),
 				Time.from(from.plus(Duration.ofHours(1))),
+				/* Self-signed because subject is same as issuer */
 				issuer,
 				SubjectPublicKeyInfoFactory.createSubjectPublicKeyInfo(publicKey)
 			)
 				.addExtension(Extension.basicConstraints, true, new BasicConstraints(false))
-				.addExtension(Extension.subjectAlternativeName, false, 
-					//TODO if host is an IP address, use different general name type
-					new GeneralNames(new GeneralName(GeneralName.dNSName, new DERIA5String(host))))
+				.addExtension(Extension.subjectAlternativeName, false, subjectAlternativeNames)
 				.addExtension(Extension.keyUsage, true, new KeyUsage(KeyUsage.digitalSignature))
 				.addExtension(Extension.extendedKeyUsage, false, new ExtendedKeyUsage(KeyPurposeId.id_kp_serverAuth))
 				.build(signer);
@@ -124,7 +131,7 @@ public class Certs {
 				.getKeyStore();
 			
 			//KeyStore keyStore = KeyStore.getInstance("PKCS12");
-			keyStore.setEntry(host, new PrivateKeyEntry(jcaPrivateKey, 
+			keyStore.setEntry("cert", new PrivateKeyEntry(jcaPrivateKey, 
 				certChain, Set.of()), new PasswordProtection(password));
 			
 			return keyStore;

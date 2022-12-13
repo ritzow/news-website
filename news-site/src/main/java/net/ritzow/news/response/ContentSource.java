@@ -3,9 +3,7 @@ package net.ritzow.news.response;
 import java.io.IOException;
 import java.lang.StackWalker.Option;
 import java.net.URL;
-import java.net.URLConnection;
 import java.nio.charset.StandardCharsets;
-import java.util.Arrays;
 import net.ritzow.news.ResourceUtil;
 
 public interface ContentSource {

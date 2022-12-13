@@ -3,6 +3,9 @@ package net.ritzow.news;
 import j2html.tags.DomContent;
 import java.io.IOException;
 import java.net.InetAddress;
+import java.nio.ByteBuffer;
+import java.nio.CharBuffer;
+import java.nio.charset.StandardCharsets;
 import java.security.KeyStore;
 import java.sql.SQLException;
 import java.text.NumberFormat;
@@ -10,12 +13,16 @@ import java.time.Duration;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.FormatStyle;
-import java.util.*;
+import java.util.Iterator;
+import java.util.Locale;
+import java.util.Optional;
+import java.util.Set;
 import net.ritzow.news.database.ContentManager;
 import net.ritzow.news.page.*;
 import net.ritzow.news.response.CachingImmutableRequestConsumer;
 import net.ritzow.news.response.ContentSource;
 import net.ritzow.news.response.NamedResourceConsumer;
+import org.eclipse.jetty.http.HttpHeader;
 import org.eclipse.jetty.http.HttpStatus;
 import org.eclipse.jetty.server.Request;
 import org.eclipse.jetty.server.Server;
@@ -44,6 +51,10 @@ public final class NewsSite {
 		var server = new NewsSite(requireSni, keyStore, keyStorePassword, peers, bind);
 		server.server.start();
 		return server;
+	}
+	
+	public void waitForExit() throws InterruptedException {
+		server.join();
 	}
 	
 	public static final NamedResourceConsumer<NewsSite> 
@@ -90,7 +101,8 @@ public final class NewsSite {
 					RES_FONT_FACE
 				)),
 				entry("session", SessionPage::sessionPage),
-				entry("kill", ShutdownPage::shutdownPage)
+				entry("kill", ShutdownPage::shutdownPage),
+				entry("streamtest", NewsSite::streamingPage)
 			)
 		);
 		
@@ -102,6 +114,21 @@ public final class NewsSite {
 			request -> ExceptionPage.exceptionPageHandler(request, this), 
 			bind
 		);
+	}
+	
+	private static void streamingPage(Request request, NewsSite site, Iterator<String> path) throws IOException {
+		ByteBuffer buf = StandardCharsets.UTF_8.newEncoder().encode(CharBuffer.wrap("test message 123\n"));
+		request.getResponse().getHttpFields().add(HttpHeader.CONTENT_TYPE, "text/plain; charset=utf-8");
+		while(!request.getResponse().getHttpOutput().isClosed()) {
+			request.getResponse().getHttpOutput().write(buf);
+			request.getResponse().flushBuffer();
+			buf.flip();
+			try {
+				Thread.sleep(1000);
+			} catch(InterruptedException e) {
+				throw new RuntimeException(e);
+			}
+		}
 	}
 	
 	public static void doSessionInitResponse(Request request) throws IOException {
