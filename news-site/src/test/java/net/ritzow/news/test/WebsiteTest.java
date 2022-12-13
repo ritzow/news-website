@@ -23,15 +23,18 @@ public class WebsiteTest {
 //			Map.entry(RFC4519Style.o, "test-web")
 //		), random, CertificateAuthority.ipAddressName(InetAddress.getByName("127.0.0.1")), 
 //			CertificateAuthority.ipAddressName(InetAddress.getByName("::1")));
+
+		var random = SecureRandom.getInstanceStrong();
+		
 		Set<InetAddress> addresses = Set.of(InetAddress.getByName("127.0.0.1"), InetAddress.getByName("::1"));
-		String password = new BigInteger(512, new SecureRandom(new byte[0])).toString(Character.MAX_RADIX);
-		String organization = "junit-test";
+		String password = new BigInteger(512, random).toString(Character.MAX_RADIX);
 		System.setProperty("title", "RedNet");
+		String organization = "junit-test";
 		var server = NewsSite.start(
 			false,
 			/*CertificateAuthority.newKeyStore(cert)*/
 			Certs.selfSigned(new GeneralNames(addresses.stream().map(CertificateAuthority::ipAddressName)
-				.toArray(GeneralName[]::new)), organization, password.toCharArray()),
+				.toArray(GeneralName[]::new)), organization, password.toCharArray(), random),
 			password,
 			addresses.stream().map(InetAddress::getHostAddress).collect(Collectors.toSet()),
 			addresses.toArray(InetAddress[]::new)

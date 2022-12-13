@@ -2,14 +2,17 @@ package net.ritzow.news;
 
 import java.io.IOException;
 import java.math.BigInteger;
-import java.nio.ByteBuffer;
 import java.nio.CharBuffer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.security.*;
+import java.security.KeyStore;
 import java.security.KeyStore.PasswordProtection;
 import java.security.KeyStore.PrivateKeyEntry;
+import java.security.KeyStoreException;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.security.SecureRandom;
 import java.security.cert.Certificate;
 import java.security.cert.CertificateException;
 import java.sql.Time;
@@ -17,12 +20,17 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Set;
-import org.bouncycastle.asn1.DERIA5String;
 import org.bouncycastle.asn1.DERUTF8String;
 import org.bouncycastle.asn1.pkcs.PKCSObjectIdentifiers;
 import org.bouncycastle.asn1.x500.RDN;
 import org.bouncycastle.asn1.x500.X500Name;
-import org.bouncycastle.asn1.x509.*;
+import org.bouncycastle.asn1.x509.AlgorithmIdentifier;
+import org.bouncycastle.asn1.x509.BasicConstraints;
+import org.bouncycastle.asn1.x509.ExtendedKeyUsage;
+import org.bouncycastle.asn1.x509.Extension;
+import org.bouncycastle.asn1.x509.GeneralNames;
+import org.bouncycastle.asn1.x509.KeyPurposeId;
+import org.bouncycastle.asn1.x509.KeyUsage;
 import org.bouncycastle.cert.X509v3CertificateBuilder;
 import org.bouncycastle.cert.jcajce.JcaX509CertificateConverter;
 import org.bouncycastle.crypto.generators.RSAKeyPairGenerator;
@@ -62,25 +70,11 @@ public class Certs {
 	}
 
 	//TODO allow multiple hostnames
-	public static KeyStore selfSigned(GeneralNames subjectAlternativeNames, String org, char[] password) throws IOException {
+	public static KeyStore selfSigned(GeneralNames subjectAlternativeNames, String org, char[] password, SecureRandom random) throws IOException {
 		try {
-			var gen = new RSAKeyPairGenerator();
-			var seed = MessageDigest.getInstance("SHA256");
-			ByteBuffer passwordBytes = StandardCharsets.UTF_8.encode(CharBuffer.wrap(password));
-			seed.update(passwordBytes);
-			passwordBytes.clear();
-			//clear the password
-			while(passwordBytes.hasRemaining()) {
-				passwordBytes.put((byte)0);
-			}
-
 			var from = Instant.now().truncatedTo(ChronoUnit.HOURS);
-			
-			seed.update(longToBytes(from.toEpochMilli()));
-
-			var random = new SecureRandom(seed.digest());
-
 			int keySize = 2048;
+			var gen = new RSAKeyPairGenerator();
 			gen.init(new RSAKeyGenerationParameters(
 				BigInteger.valueOf(0x10001), 
 				random,
@@ -98,9 +92,11 @@ public class Certs {
 				.build(privateKey);
 			
 			MessageDigest serialHash = MessageDigest.getInstance("SHA256");
-			serialHash.update(passwordBytes);
+			serialHash.update(StandardCharsets.UTF_8.encode(CharBuffer.wrap(password)));
 			serialHash.update(org.getBytes(StandardCharsets.UTF_8));
 			serialHash.update(longToBytes(from.toEpochMilli()));
+			serialHash.update(PrivateKeyInfoFactory.createPrivateKeyInfo(privateKey).getEncoded());
+			serialHash.update(SubjectPublicKeyInfoFactory.createSubjectPublicKeyInfo(publicKey).getEncoded());
 			BigInteger serial = new BigInteger(1, serialHash.digest());
 
 			LOG.atInfo()
