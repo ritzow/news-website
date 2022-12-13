@@ -53,6 +53,7 @@ import org.apache.lucene.search.TermQuery;
 import org.apache.lucene.search.TopDocs;
 import org.apache.lucene.search.TopScoreDocCollector;
 import org.apache.lucene.store.ByteBuffersDirectory;
+import org.apache.lucene.store.NRTCachingDirectory;
 import org.h2.mvstore.MVStore.Builder;
 import org.h2.mvstore.OffHeapStore;
 
@@ -115,7 +116,7 @@ public final class ContentManager {
 			//Look into NRTManager
 			//https://blog.mikemccandless.com/2011/11/near-real-time-readers-with-lucenes.html
 			//Use NRTCachingDirectory when replacing ByteBuffersDirectory with disk directory
-			indexer = new IndexWriter(new ByteBuffersDirectory(), new IndexWriterConfig(new StandardAnalyzer()));
+			indexer = new IndexWriter(new NRTCachingDirectory(new ByteBuffersDirectory(), 16, 32), new IndexWriterConfig(new StandardAnalyzer()));
 			//https://blog.mikemccandless.com/2011/11/near-real-time-readers-with-lucenes.html
 			//TODO applyAllDeletes false can improve performance.
 			searcher = new SearcherManager(indexer, new SearcherFactory());
@@ -247,7 +248,6 @@ public final class ContentManager {
 			doc.add(new StoredField("id", article.getObjId().asLong()));
 			doc.add(new StoredField("lang", locale.toLanguageTag()));
 			doc.add(new TextField("title", title, Store.NO));
-			//doc.add(new TextField("content", new MarkdownTokenStream(Parser.builder().build().parse(markdown))));
 			doc.add(new TextField("content", markdown, Store.NO));
 			indexer.addDocument(doc);
 			tx.commit();

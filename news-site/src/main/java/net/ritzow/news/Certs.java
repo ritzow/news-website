@@ -15,10 +15,10 @@ import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.security.cert.Certificate;
 import java.security.cert.CertificateException;
-import java.sql.Time;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.Date;
 import java.util.Set;
 import org.bouncycastle.asn1.DERUTF8String;
 import org.bouncycastle.asn1.pkcs.PKCSObjectIdentifiers;
@@ -31,6 +31,7 @@ import org.bouncycastle.asn1.x509.Extension;
 import org.bouncycastle.asn1.x509.GeneralNames;
 import org.bouncycastle.asn1.x509.KeyPurposeId;
 import org.bouncycastle.asn1.x509.KeyUsage;
+import org.bouncycastle.asn1.x509.Time;
 import org.bouncycastle.cert.X509v3CertificateBuilder;
 import org.bouncycastle.cert.jcajce.JcaX509CertificateConverter;
 import org.bouncycastle.crypto.generators.RSAKeyPairGenerator;
@@ -103,11 +104,12 @@ public class Certs {
 				.addKeyValue("serial", serial)
 				.log("Generated self-signed certificate serial number");
 			
+			
 			var cert = new X509v3CertificateBuilder(
 				issuer,
 				serial,
-				Time.from(from),
-				Time.from(from.plus(Duration.ofHours(1))),
+				new Time(Date.from(from)),
+				new Time(Date.from(from.plus(Duration.ofHours(1)))),
 				/* Self-signed because subject is same as issuer */
 				issuer,
 				SubjectPublicKeyInfoFactory.createSubjectPublicKeyInfo(publicKey)

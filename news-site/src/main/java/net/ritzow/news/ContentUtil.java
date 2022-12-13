@@ -1,6 +1,5 @@
 package net.ritzow.news;
 
-import java.sql.SQLException;
 import java.util.Locale;
 import java.util.random.RandomGenerator;
 import java.util.random.RandomGeneratorFactory;
@@ -29,7 +28,7 @@ public class ContentUtil {
 		return builder.toString();
 	}
 	
-	static void genArticles(ContentManager cm) throws SQLException {
+	static void genArticles(ContentManager cm) {
 		RandomGenerator random = RandomGeneratorFactory.getDefault().create(0);
 		
 		int count = random.nextInt(15, 35);
