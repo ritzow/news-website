@@ -2,11 +2,17 @@ package net.ritzow.news.test;
 
 import java.math.BigInteger;
 import java.net.InetAddress;
+import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
+import java.util.Locale;
 import java.util.Set;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import net.ritzow.cert.CertificateAuthority;
 import net.ritzow.news.Certs;
+import net.ritzow.news.ContentUtil;
 import net.ritzow.news.NewsSite;
 import org.bouncycastle.asn1.x509.GeneralName;
 import org.bouncycastle.asn1.x509.GeneralNames;
@@ -39,6 +45,32 @@ public class WebsiteTest {
 			addresses.stream().map(InetAddress::getHostAddress).collect(Collectors.toSet()),
 			addresses.toArray(InetAddress[]::new)
 		);
+		
+		var queue = new ArrayBlockingQueue<Runnable>(4);
+		try(var exec = new ThreadPoolExecutor(4, 4, Long.MAX_VALUE, TimeUnit.NANOSECONDS, queue)) {
+			exec.prestartAllCoreThreads();
+			while(!Thread.interrupted()) {
+				queue.put(() -> {
+					String username = ContentUtil.generateGibberish(random, false, 1, 10).trim();
+					server.cm.newAccount(username, ContentUtil.generateGibberish(random, false, 1, 16).getBytes(StandardCharsets.UTF_8));
+					System.out.println("generated user " + username);
+				});
+				queue.put(() -> {
+					Locale locale = server.cm.getSupportedLocales().get(random.nextInt(server.cm.getSupportedLocales().size()));
+					String urlna = ContentUtil.generateGibberish(random, false, 1, 10).trim();
+					String title = ContentUtil.generateGibberish(random, false, 1, 10);
+					server.cm.newArticle(urlna, locale,
+						title, ContentUtil.generateGibberish(random, true, 1000, 8));
+					System.out.println("generated " + urlna + " " + title + " " + locale);
+					try {
+						Thread.sleep(random.nextLong(800, 1000));
+					} catch(InterruptedException e) {
+						throw new RuntimeException(e);
+					}
+				});
+			}	
+		}
+		
 		server.waitForExit();
 	}
 }
