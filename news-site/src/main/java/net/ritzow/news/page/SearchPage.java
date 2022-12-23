@@ -53,13 +53,14 @@ public class SearchPage {
 	}
 
 	private static Stream<DomContent> content(NewsSite site, String query, Locale locale) throws IOException {
-		return site.cm.search(query, locale, SearchPage::firstSentence)
-			.stream().map(article -> div().withClasses("foreground").with(
+		return site.cm.searcher().search(query, locale)
+			.map(site.cm.searchLookup())
+			.map(article -> div().withClasses("foreground").with(
 				h2(article.title()),
-				p().withText(article.content())
-			));
+				p().withText(firstSentence(article.content())))
+			);
 	}
-
+	
 	private static String firstSentence(Reader reader) {
 		try {
 			var texts = Parser.builder()

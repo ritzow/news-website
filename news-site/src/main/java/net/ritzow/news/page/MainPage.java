@@ -1,6 +1,8 @@
 package net.ritzow.news.page;
 
 import j2html.tags.DomContent;
+import java.text.Collator;
+import java.util.Comparator;
 import java.util.Iterator;
 import java.util.Locale;
 import net.ritzow.news.Forms;
@@ -8,6 +10,7 @@ import net.ritzow.news.Forms.FormField;
 import net.ritzow.news.Forms.FormWidget;
 import net.ritzow.news.NewsSite;
 import net.ritzow.news.component.LangSelectComponent;
+import net.ritzow.news.database.ContentManager;
 import org.eclipse.jetty.http.HttpMethod;
 import org.eclipse.jetty.http.HttpStatus;
 import org.eclipse.jetty.server.Request;
@@ -57,9 +60,8 @@ public class MainPage {
 		return div().withClasses("main-box", "foreground").with(
 			h1(translated("greeting")).withClass("title"),
 			dynamic(state -> eachStreamed(
-				site.cm.getArticlesForLocale(bestLocale).stream().map(
-					article3 -> articleBox(article3.title(), "/article/" + article3.urlname())
-				)
+				site.cm.getRecentArticlesForLocale(bestLocale)
+					.map(article3 -> articleBox(article3, bestLocale))
 			))
 		);
 	}

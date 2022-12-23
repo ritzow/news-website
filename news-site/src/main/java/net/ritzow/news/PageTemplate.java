@@ -8,12 +8,16 @@ import j2html.tags.specialized.ButtonTag;
 import j2html.tags.specialized.FormTag;
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.time.format.FormatStyle;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.stream.Stream;
 import net.ritzow.news.component.CommonComponents;
+import net.ritzow.news.database.ContentManager.Article3;
 import org.eclipse.jetty.server.Request;
 
 import static j2html.TagCreator.*;
@@ -41,7 +45,9 @@ public class PageTemplate {
 				while(it.hasNext()) {
 					it.next().render(builder, model);
 				}
-				return builder.output();
+				try(content) {
+					return builder.output();
+				}
 			}
 		};
 	}
@@ -137,9 +143,11 @@ public class PageTemplate {
 		return div().withClasses("content-center").with(content);
 	}
 	
-	public static DomContent articleBox(String title, String url) {
-		return a().withClasses("foreground", "article-box").withHref(url).with(
-			span(title)
+	public static DomContent articleBox(Article3 article, Locale locale) {
+		return a().withClasses("foreground", "article-box").withHref("/article/" + article.urlname()).with(
+			span(article.title()),
+			time(article.published().atZone(ZoneId.systemDefault() /* TODO time stuff? */).format(
+				DateTimeFormatter.ofLocalizedDateTime(FormatStyle.LONG).withLocale(locale)))
 		);
 	}
 	
