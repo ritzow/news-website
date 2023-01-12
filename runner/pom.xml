@@ -1,42 +1,38 @@
-<project>
+<project xmlns="http://maven.apache.org/POM/4.0.0">
     <modelVersion>4.0.0</modelVersion>
-    <groupId>net.ritzow</groupId>
+    
     <artifactId>runner</artifactId>
     <packaging>maven-plugin</packaging>
-    <version>1.4-SNAPSHOT</version>
+    
+    <parent>
+        <groupId>net.ritzow</groupId>
+        <artifactId>news-site-parent</artifactId>
+        <version>${revision}</version>
+    </parent>
 
     <prerequisites>
         <maven>3.8.1</maven>
     </prerequisites>
     
+    <properties>
+        <maven.compiler.source>17</maven.compiler.source>
+        <maven.compiler.target>17</maven.compiler.target>
+        <maven.compiler.release>17</maven.compiler.release>
+    </properties>
+    
     <build>
         <plugins>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-compiler-plugin</artifactId>
-                <version>3.10.0</version>
+                <artifactId>maven-surefire-plugin</artifactId>
                 <configuration>
-                    <encoding>UTF-8</encoding>
-                    <source>18</source>
-                    <target>18</target>
-                    <release>18</release>
+                    <skip>true</skip>
                 </configuration>
             </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-plugin-plugin</artifactId>
                 <version>3.6.4</version>
-                <configuration>
-                    <encoding>UTF-8</encoding>
-                </configuration>
-            </plugin>
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-resources-plugin</artifactId>
-                <version>3.2.0</version>
-                <configuration>
-                    <encoding>UTF-8</encoding>
-                </configuration>
             </plugin>
         </plugins>
     </build>

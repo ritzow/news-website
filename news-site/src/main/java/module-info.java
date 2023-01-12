@@ -1,4 +1,6 @@
 module net.ritzow.news {
+	exports net.ritzow.news;
+	exports net.ritzow.news.database;
 	exports net.ritzow.news.database.model;
 	
 	requires org.eclipse.jetty.server;
