@@ -191,10 +191,10 @@ public final class ContentManager {
 		} catch(RuntimeException e) {
 			tx.rollback();
 			throw e;
-		} catch(IOException e) {
+		}/* catch(IOException e) {
 			tx.rollback();
 			throw new RuntimeException(e);
-		}
+		}*/
 	}
 
 	private static Optional<NewsArticle> findArticle(JTransaction tx, String urlName) {
