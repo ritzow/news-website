@@ -10,10 +10,10 @@ import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
-import net.ritzow.cert.CertificateAuthority;
 import net.ritzow.news.Certs;
 import net.ritzow.news.ContentUtil;
 import net.ritzow.news.NewsSite;
+import org.bouncycastle.asn1.DEROctetString;
 import org.bouncycastle.asn1.x509.GeneralName;
 import org.bouncycastle.asn1.x509.GeneralNames;
 import org.junit.jupiter.api.Test;
@@ -39,7 +39,7 @@ public class WebsiteTest {
 		var server = NewsSite.start(
 			false,
 			/*CertificateAuthority.newKeyStore(cert)*/
-			Certs.selfSigned(new GeneralNames(addresses.stream().map(CertificateAuthority::ipAddressName)
+			Certs.selfSigned(new GeneralNames(addresses.stream().map(addr -> new GeneralName(GeneralName.iPAddress, new DEROctetString(addr.getAddress())))
 				.toArray(GeneralName[]::new)), organization, password.toCharArray(), random),
 			password,
 			addresses.stream().map(InetAddress::getHostAddress).collect(Collectors.toSet()),
@@ -63,7 +63,7 @@ public class WebsiteTest {
 						title, ContentUtil.generateGibberish(random, true, 1000, 8));
 					System.out.println("generated " + urlna + " " + title + " " + locale);
 					try {
-						Thread.sleep(random.nextLong(800, 1000));
+						Thread.sleep(random.nextLong(1000, 2000));
 					} catch(InterruptedException e) {
 						throw new RuntimeException(e);
 					}
