@@ -18,6 +18,7 @@ import java.util.Map;
 import java.util.stream.Stream;
 import net.ritzow.news.component.CommonComponents;
 import net.ritzow.news.database.ContentManager.Article3;
+import net.ritzow.news.internal.SiteResources;
 import org.eclipse.jetty.server.Request;
 
 import static j2html.TagCreator.*;
@@ -83,9 +84,9 @@ public class PageTemplate {
 		doGetHtmlStreamed(request, status, List.of(mainLocale),
 			context(request, site.translator, Map.of(),
 				CommonComponents.page(title, 
-					contentPath(NewsSite.RES_ICON),
+					contentPath(SiteResources.RES_ICON),
 					"/opensearch",
-					contentPath(NewsSite.RES_GLOBAL_CSS),
+					contentPath(SiteResources.RES_GLOBAL_CSS),
 					mainLocale,
 					CommonComponents.content(
 						CommonComponents.header(request, site),

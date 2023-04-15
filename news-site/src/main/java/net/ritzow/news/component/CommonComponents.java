@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import net.ritzow.news.*;
+import net.ritzow.news.internal.SiteResources;
 import net.ritzow.news.page.Login;
 import org.eclipse.jetty.server.Request;
 
@@ -50,7 +51,7 @@ public class CommonComponents {
 		)
 	);
 	
-	private static final DomContent LOGO_HTML = logo(contentPath(NewsSite.RES_ICON));
+	private static final DomContent LOGO_HTML = logo(contentPath(SiteResources.RES_ICON));
 	
 	private static final DomContent STATIC_CENTERED_CONTENT = each(
 		div().withClasses("page-body", "headerless-content").with(
@@ -85,7 +86,7 @@ public class CommonComponents {
 					.withType("application/opensearchdescription+xml")
 					.withTitle(NewsSite.websiteTitle()),
 				link().withRel("stylesheet")
-					.withHref(contentPath(NewsSite.RES_FONT_FACE)),
+					.withHref(contentPath(SiteResources.RES_FONT_FACE)),
 				link().withRel("stylesheet")
 					.withHref(stylePath),
 				HEAD_STATICS

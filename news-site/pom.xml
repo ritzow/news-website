@@ -22,9 +22,14 @@
             <dependency>
                 <groupId>org.slf4j</groupId>
                 <artifactId>slf4j-parent</artifactId>
-                <version>2.0.3</version>
+                <version>2.0.7</version>
                 <type>pom</type>
                 <scope>import</scope>
+            </dependency>
+            <dependency>
+                <groupId>com.google.guava</groupId>
+                <artifactId>guava</artifactId>
+                <version>31.1-jre</version>
             </dependency>
         </dependencies>
     </dependencyManagement>
@@ -60,21 +65,6 @@
         </resources>
         <plugins>
             <plugin>
-                <groupId>net.ritzow</groupId>
-                <artifactId>runner</artifactId>
-                <version>${revision}</version>
-                <configuration>
-                    <jvmProps>${project.basedir}/project.properties</jvmProps>
-                </configuration>
-            </plugin>
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-compiler-plugin</artifactId>
-                <configuration>
-                    <compilerArgs>--enable-preview</compilerArgs>
-                </configuration>
-            </plugin>
-            <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-jar-plugin</artifactId>
                 <version>3.2.2</version>
@@ -87,49 +77,6 @@
                     </archive>
                 </configuration>
             </plugin>
-            <!--<plugin>
-                <groupId>org.graalvm.buildtools</groupId>
-                <artifactId>native-maven-plugin</artifactId>
-                <version>0.9.19</version>
-                <extensions>true</extensions>
-                <executions>
-                    <execution>
-                        <id>build-native</id>
-                        <goals>
-                            <goal>compile</goal>
-                        </goals>
-                        <phase>package</phase>
-                    </execution>
-                    &lt;!&ndash;<execution>
-                        <id>test-native</id>
-                        <goals>
-                            <goal>test</goal>
-                        </goals>
-                        <phase>test</phase>
-                    </execution>&ndash;&gt;
-                </executions>
-                <configuration>
-                    &lt;!&ndash; ... &ndash;&gt;
-                </configuration>
-            </plugin>-->
-            <!--<plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-jlink-plugin</artifactId>
-                <version>3.1.0</version>
-                <configuration>
-                    &lt;!&ndash;<skip>true</skip>&ndash;&gt;
-                    <noManPages>true</noManPages>
-                    <noHeaderFiles>true</noHeaderFiles>
-                    <endian>little</endian>
-                    <compress>2</compress>
-                    <stripDebug>true</stripDebug>
-                </configuration>
-                &lt;!&ndash;<executions>
-                    <execution>
-                        <phase>none</phase>
-                    </execution>
-                </executions>&ndash;&gt;
-            </plugin>-->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-assembly-plugin</artifactId>
@@ -223,13 +170,28 @@
         <dependency>
             <groupId>io.permazen</groupId>
             <artifactId>permazen-main</artifactId>
-            <version>4.1.9</version>
+            <version>4.2.0</version>
+            <exclusions>
+                <exclusion>
+                    <groupId>com.google.code.findbugs</groupId>
+                    <artifactId>jsr305</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>io.permazen</groupId>
+                    <artifactId>permazen-kv-simple</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
         <dependency>
             <groupId>io.permazen</groupId>
-            <artifactId>permazen-kv-mvstore</artifactId>
-            <version>4.1.9</version>
+            <artifactId>permazen-kv-array</artifactId>
+            <version>4.2.0</version>
         </dependency>
+        <!--<dependency>
+            <groupId>io.permazen</groupId>
+            <artifactId>permazen-kv-mvstore</artifactId>
+            <version>4.2.0</version>
+        </dependency>-->
         
         <!-- Logging -->
         <dependency>
@@ -246,7 +208,7 @@
             <!-- Log OpenJDK messages (but not all of them) to SLF4J -->
             <groupId>org.slf4j</groupId>
             <artifactId>slf4j-jdk-platform-logging</artifactId>
-            <version>2.0.0</version>
+            <version>2.0.7</version>
             <scope>runtime</scope>
         </dependency>
         <dependency>

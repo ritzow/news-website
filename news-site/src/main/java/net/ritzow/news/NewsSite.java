@@ -6,6 +6,7 @@ import java.net.InetAddress;
 import java.nio.ByteBuffer;
 import java.nio.CharBuffer;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
 import java.security.KeyStore;
 import java.text.NumberFormat;
 import java.time.Duration;
@@ -17,6 +18,7 @@ import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
 import net.ritzow.news.database.ContentManager;
+import net.ritzow.news.internal.SiteResources;
 import net.ritzow.news.page.ArticlePage;
 import net.ritzow.news.page.ErrorPages;
 import net.ritzow.news.page.ExceptionPage;
@@ -25,13 +27,12 @@ import net.ritzow.news.page.SearchPage;
 import net.ritzow.news.page.SessionPage;
 import net.ritzow.news.page.ShutdownPage;
 import net.ritzow.news.response.CachingImmutableRequestConsumer;
-import net.ritzow.news.response.ContentSource;
-import net.ritzow.news.response.NamedResourceConsumer;
 import org.eclipse.jetty.http.HttpHeader;
 import org.eclipse.jetty.http.HttpStatus;
 import org.eclipse.jetty.server.Request;
 import org.eclipse.jetty.server.Server;
 
+import static j2html.TagCreator.data;
 import static j2html.TagCreator.text;
 import static java.util.Map.entry;
 import static net.ritzow.news.JettySetup.newStandardServer;
@@ -51,40 +52,65 @@ public final class NewsSite {
 	public final Translator<String> translator;
 	public final Set<String> peers;
 	
-	public static NewsSite start(boolean requireSni, KeyStore keyStore, String keyStorePassword, 
-			Set<String> peers, InetAddress... bind) throws Exception {
-		var server = new NewsSite(requireSni, keyStore, keyStorePassword, peers, bind);
-		server.server.start();
-		return server;
+	public static class Builder {
+		private boolean requireSni;
+		private KeyStore keyStore;
+		private String keyStorePassword;
+		private Set<String> peers;
+		private InetAddress[] bind;
+		private Path databaseDir;
+
+		public Builder setRequireSni(boolean requireSni) {
+			this.requireSni = requireSni;
+			return this;
+		}
+
+		public Builder setKeyStore(KeyStore keyStore) {
+			this.keyStore = keyStore;
+			return this;
+		}
+
+		public Builder setKeyStorePassword(String keyStorePassword) {
+			this.keyStorePassword = keyStorePassword;
+			return this;
+		}
+
+		public Builder setPeers(Set<String> peers) {
+			this.peers = peers;
+			return this;
+		}
+
+		public Builder setBind(InetAddress... bind) {
+			this.bind = bind;
+			return this;
+		}
+		
+		public Builder setDatabaseDir(Path directory) {
+			this.databaseDir = directory;
+			return this;
+		}
+
+		public NewsSite start() throws Exception {
+			var site = new NewsSite(requireSni, keyStore, keyStorePassword, peers, databaseDir, bind);
+			site.start();
+			return site;
+		}
+	}
+	
+	public static Builder builder() {
+		return new Builder();
 	}
 	
 	public void waitForExit() throws InterruptedException {
 		server.join();
 	}
 	
-	public static final NamedResourceConsumer<NewsSite> 
-		RES_GLOBAL_CSS = NamedResourceConsumer.ofHashed(ContentSource.ofModuleResource("/css/global.css", "text/css")),
-		RES_ICON = NamedResourceConsumer.ofHashed(ContentSource.ofModuleResource("/image/icon.svg", "image/svg+xml")),
-		RES_FONT = NamedResourceConsumer.ofHashed(ContentSource.ofModuleResource("/font/OpenSans-Regular.ttf", "font/ttf"));
-	
-	private static final ContentSource 
-		RES_OPENSEARCH = ContentSource.ofString(OpenSearch.generateOpensearchXml(), "application/opensearchdescription+xml");
-	
-	public static final NamedResourceConsumer<NewsSite>
-		RES_FONT_FACE = NamedResourceConsumer.ofHashed(
-			ContentSource.ofString("""
-				@font-face {
-					font-family: "Open Sans";
-					src: url("URLHERE") format("truetype");
-					font-display: swap;
-				}
-				""".replace("URLHERE", contentPath(RES_FONT)),
-				"text/css"
-			)
-		);
-	
-	private NewsSite(boolean requireSni, KeyStore keyStore, String keyStorePassword, Set<String> peers, InetAddress... bind) throws Exception {
-		cm = ContentManager.ofMemoryDatabase();
+	private void start() throws Exception {
+		server.start();
+	}
+
+	private NewsSite(boolean requireSni, KeyStore keyStore, String keyStorePassword, Set<String> peers, Path databaseDir, InetAddress... bind) throws Exception {
+		cm = new ContentManager(databaseDir);
 		ContentUtil.genArticles(cm);
 		translator = Translator.ofProperties(properties("/lang/welcome.properties"));
 		this.peers = peers;
@@ -93,16 +119,16 @@ public final class NewsSite {
 				MainPage::mainPageGenerator,
 				ErrorPages::doGeneric404,
 				entry("article", ArticlePage::articlePageProcessor),
-				entry("opensearch", new CachingImmutableRequestConsumer<>(RES_OPENSEARCH, Duration.ZERO)),
+				entry("opensearch", new CachingImmutableRequestConsumer<>(SiteResources.RES_OPENSEARCH, Duration.ZERO)),
 				entry("search", SearchPage::searchPage),
 				entry("content", rootNoMatchOrNext(
 					ErrorPages::doGeneric404,
 					ErrorPages::doGeneric404,
 					/* Content hashes */
-					RES_ICON,
-					RES_GLOBAL_CSS,
-					RES_FONT,
-					RES_FONT_FACE
+					SiteResources.RES_ICON,
+					SiteResources.RES_GLOBAL_CSS,
+					SiteResources.RES_FONT,
+					SiteResources.RES_FONT_FACE
 				)),
 				entry("session", SessionPage::sessionPage),
 				entry("kill", ShutdownPage::shutdownPage),

@@ -7,6 +7,7 @@ import java.util.Map;
 import java.util.Optional;
 import net.ritzow.news.NewsSite;
 import net.ritzow.news.component.CommonComponents;
+import net.ritzow.news.internal.SiteResources;
 import org.eclipse.jetty.http.HttpStatus;
 import org.eclipse.jetty.server.Request;
 
@@ -23,9 +24,9 @@ public class ExceptionPage {
 		doGetHtmlStreamed(request, HttpStatus.INTERNAL_SERVER_ERROR_500, List.of(),
 			context(request, site.translator, Map.of(),
 				CommonComponents.page("Error", 
-					contentPath(NewsSite.RES_ICON),
+					contentPath(SiteResources.RES_ICON),
 					"/opensearch",
-					contentPath(NewsSite.RES_GLOBAL_CSS),
+					contentPath(SiteResources.RES_GLOBAL_CSS),
 					Locale.forLanguageTag("en-US"),
 					CommonComponents.headerlessContent(
 						p("Sorry, there was an unexpected error!"),

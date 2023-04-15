@@ -7,6 +7,7 @@ import javax.xml.transform.TransformerException;
 import javax.xml.transform.TransformerFactory;
 import javax.xml.transform.dom.DOMSource;
 import javax.xml.transform.stream.StreamResult;
+import net.ritzow.news.internal.SiteResources;
 import org.eclipse.jetty.http.HttpURI;
 import org.w3c.dom.Document;
 
@@ -39,7 +40,7 @@ public class OpenSearch {
 		
 		var image = doc.createElement("Image");
 		image.setAttribute("type", "image/svg+xml");
-		image.setTextContent(HttpURI.build(uri).path(contentPath(NewsSite.RES_ICON)).toString());
+		image.setTextContent(HttpURI.build(uri).path(contentPath(SiteResources.RES_ICON)).toString());
 		
 		var template = doc.createElement("Url");
 		template.setAttribute("type", "text/html");

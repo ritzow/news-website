@@ -4,14 +4,14 @@ import io.permazen.JTransaction;
 import io.permazen.Permazen;
 import io.permazen.PermazenFactory;
 import io.permazen.core.Database;
-import io.permazen.kv.mvstore.MVStoreAtomicKVStore;
-import io.permazen.kv.mvstore.MVStoreKVDatabase;
+import io.permazen.kv.array.ArrayKVDatabase;
+import io.permazen.kv.array.AtomicArrayKVStore;
 import io.permazen.tuple.Tuple2;
 import io.permazen.tuple.Tuple3;
 import io.permazen.util.Bounds;
-import java.io.IOException;
 import java.io.Reader;
 import java.io.StringReader;
+import java.nio.file.Path;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.text.Collator;
@@ -32,7 +32,6 @@ import net.ritzow.news.database.model.NewsAccount;
 import net.ritzow.news.database.model.NewsArticle;
 import net.ritzow.news.database.model.NewsComment;
 import net.ritzow.news.database.model.NewsContent;
-import org.h2.mvstore.MVStore.Builder;
 
 public final class ContentManager {
 
@@ -47,25 +46,27 @@ public final class ContentManager {
 	private final Permazen pz;
 	private final SecureRandom random;
 	private final SearchIndex search;
-
-	public static ContentManager ofMemoryDatabase() throws NoSuchAlgorithmException {
-		return new ContentManager();
-	}
 	
-	private ContentManager() throws NoSuchAlgorithmException {
+	public ContentManager(Path dir) throws NoSuchAlgorithmException {
 		this.random = SecureRandom.getInstanceStrong();
 		
 		this.search = new SearchIndex();
 
-		MVStoreAtomicKVStore implimpl = new MVStoreAtomicKVStore();
-		implimpl.setBuilder(new Builder()
+		ArrayKVDatabase impl = new ArrayKVDatabase();
+		var kvstore = new AtomicArrayKVStore();
+		kvstore.setDirectory(dir.toFile());
+		impl.setKVStore(kvstore);
+		impl.start();
+
+//		MVStoreAtomicKVStore implimpl = new MVStoreAtomicKVStore();
+//		implimpl.setBuilder(new Builder()
 				/* In-memory database */
 				/*.fileStore(new OffHeapStore())*/
-			.fileName("target/database.permazen"));
-		var impl = new MVStoreKVDatabase();
-		impl.setKVStore(implimpl);
-
-		impl.start();
+//			.fileName("target/database.permazen"));
+//		var impl = new MVStoreKVDatabase();
+//		impl.setKVStore(implimpl);
+//
+//		impl.start();
 		
 		var db = new Database(impl);
 		

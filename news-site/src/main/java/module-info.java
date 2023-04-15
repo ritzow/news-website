@@ -2,7 +2,7 @@ module net.ritzow.news {
 	exports net.ritzow.news;
 	exports net.ritzow.news.database;
 	exports net.ritzow.news.database.model;
-	
+	requires java.annotation;
 	requires org.eclipse.jetty.server;
 	requires org.eclipse.jetty.http2.server;
 	requires org.eclipse.jetty.alpn.server;
@@ -13,15 +13,14 @@ module net.ritzow.news {
 	requires com.j2html;
 	requires org.commonmark;
 	requires permazen.main;
-	requires permazen.coreapi;
-	requires permazen.kv;
-	requires permazen.kv.mvstore;
+	requires io.permazen.kv;
+	requires io.permazen.coreapi;
+	requires io.permazen.kv.array;
+	requires io.permazen.util;
 	requires java.xml;
 	requires org.apache.lucene.core;
 	requires com.google.zxing;
 	requires org.slf4j;
 	requires pngj;
-	requires com.h2database;
-	requires permazen.util;
 	requires com.google.common;
 }
